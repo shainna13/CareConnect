@@ -1,10 +1,70 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>My Website</title>
-</head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Care Connect Login</title>
+    </head>
 <body>
-  <h1>Hello World!</h1>
-  <p>Welcome to my GitHub website.</p>
+
+    <div class="login-container">
+        <div class="welcome-panel">
+            <div class="top-left-text">Log In</div>
+            
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <span class="icon-stethoscope"></span>
+                    <span class="icon-accent"></span>
+                </div>
+                <div class="logo-text">
+                    <h2 class="logo-care">care</h2>
+                    <h2 class="logo-connect">connect</h2>
+                </div>
+            </div>
+
+            <div class="welcome-text">
+                <h1>Welcome</h1>
+            </div>
+            
+            <div class="decorative-overlay"></div> 
+        </div>
+
+        <div class="login-form-panel">
+            <h2 class="login-heading">LOGIN</h2>
+            
+            <form class="login-form">
+                
+                <div class="input-group">
+                    <input type="email" placeholder="Email" class="form-input email-input" required>
+                    <span class="input-icon icon-user"></span>
+                </div>
+
+                <div class="input-group">
+                    <input type="password" placeholder="Password" class="form-input password-input" required>
+                    <span class="input-icon icon-eye-slash"></span>
+                </div>
+
+                <div class="forgot-password">
+                    <a href="#" class="forgot-link">Forgot Password?</a>
+                </div>
+
+                <button type="submit" class="login-btn">Login</button>
+
+                <div class="or-separator">
+                    <span class="or-text">or</span>
+                </div>
+
+                <button type="button" class="google-login-btn">
+                    <img src="google-icon.png" alt="Google Logo" class="google-icon">
+                    Login with Google
+                </button>
+            </form>
+
+            <div class="signup-link">
+                New to Care Connect? <a href="#" class="signup-anchor">Sign Up</a>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
