@@ -52,7 +52,38 @@ export default function LoginPage() {
       <div className="flex w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden my-10">
         
         {/* LEFT PANEL */}
-        <div className="left-panel-container w-5/12 p-12 text-white flex-col justify-center items-center hidden md:flex">
+        <div className="relative hidden w-[610px] p-12 text-white flex-col justify-center items-center hidden md:flex">
+        <svg
+            width="502px"
+            height="808"
+            viewBox="0 0 598 808"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ position: "absolute" }}
+            className="absolute right-[-6px] top-[-115px] "
+          >
+            <path
+              d="M119.924 0C300.248 196.077 529.249 466.385 568.5 613.5C588.58 688.76 596.496 753.839 597.775 808H0V0H119.924Z"
+              fill="#48A6A7"
+            />
+          </svg>
+
+          <svg
+            width="460px"
+            height="808"
+            viewBox="0 0 574 808"
+            fill="none"
+            className="absolute right-[13px] top-[-110px]"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ position: "absolute" }}
+          >
+            <path
+              d="M338.245 0C426.613 212.544 532.265 477.688 568.5 613.5C588.607 688.862 540.369 753.923 463.391 808H0V0H338.245Z"
+              fill="#48A6A7"
+              fillOpacity="0.5"
+            />
+          </svg>
+
           <div className="left-panel-content flex flex-col justify-center items-center text-center">
             <img
               src="/images/careConnectLogo.png"
