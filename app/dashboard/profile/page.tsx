@@ -6,6 +6,7 @@ import { doc } from "firebase/firestore";
 import { useUser } from "@/app/src/lib/context/UserContext";
 import { updateAccount } from "@/app/src/service/account";
 
+
 export default function ProfilePage() {
   const { accountData, currentUser, loading } = useUser();
   const [isEditing, setIsEditing] = useState(false);

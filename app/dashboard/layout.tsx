@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import { useUser } from "../src/lib/context/UserContext";
 
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { currentUser, loading } = useUser();
