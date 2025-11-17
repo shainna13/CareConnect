@@ -1,4 +1,11 @@
+"use client";
+
+import Link from "next/link";
+import { useUser } from "../src/lib/context/UserContext";
+
 export default function DashboardHome() {
+  const { currentUser, loading, accountData } = useUser();
+
     return (
       <div className="p-6">
          {/* Profile Card */}
@@ -6,14 +13,14 @@ export default function DashboardHome() {
             <div className="w-24 h-24 bg-gray-200 rounded-md"></div>
   
             <div>
-              <h1 className="text-2xl font-semibold">Dr. Sarah Watson</h1>
+              <h1 className="text-2xl font-semibold">Dr. {accountData?.name}</h1>
               <p className="text-orange-500 text-sm mt-1">
                 Your profile is incomplete. Complete it now to appear in patient search.
               </p>
   
-              <button className="mt-3 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-full text-sm">
+              <Link href="/dashboard/profile" className="mt-3 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-full text-sm">
                 Set Profile
-              </button>
+              </Link>
             </div>
           </div>
   
