@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,15 +7,388 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+
+/* ===== GLOBAL STYLES ===== */
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #CCE5E7;
+  margin: 0;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ===== BUTTONS ===== */
+.btn-primary {
+  background-color: #006A71;
+  color: #fff;
+  padding: 0.75rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  width: 100%;
+  text-align: center;
+  transition: background-color 0.3s;
+}
+
+.btn-primary:hover {
+  background-color: #005257;
+}
+
+.btn-google {
+  width: 100%;
+  border: 1px solid #D1D5DB;
+  padding: 0.75rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: 0.3s;
+}
+
+.btn-google:hover {
+  background-color: #F9FAFB;
+}
+
+/* ===== INPUTS ===== */
+.input-field {
+  width: 100%;
+  padding: 0.75rem 3rem;
+  border: 1px solid #D1D5DB;
+  border-radius: 0.5rem;
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: #48A6A7;
+  box-shadow: 0 0 0 2px rgba(72, 166, 167, 0.5);
+}
+
+/* ===== PANELS ===== */
+.left-panel-container {
+  background-color: #48A6A7;
+  position: relative;
+  overflow: hidden;
+}
+
+.left-panel-content {
+  position: relative;
+  z-index: 2;
+}
+
+/* ===== TEXT LINKS ===== */
+.text-link {
+  color: #FE9056;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  background-color: #48A6A7;
+  color: white;
+  width: 14rem;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  height: 100%;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  color: white;
+  text-decoration: none;
+  transition: background-color 0.3s;
+}
+
+.sidebar-link:hover {
+  background-color: rgba(0, 106, 113, 0.5);
+}
+
+.sidebar-link.active {
+  background-color: #006A71;
+  font-weight: 600;
+}
+
+.sidebar-link img {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-bottom: 1.5rem;
+}
+
+/* ===== HEADINGS ===== */
+h1 {
+  font-size: 1.875rem !important;
+  font-weight: 700 !important;
+  color: #006A71 !important;
+  margin-bottom: 1.5rem !important;
+}
+
+h2 {
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  color: #006A71 !important;
+  margin-bottom: 1rem !important;
+}
+
+/* ===== CALENDAR ===== */
+.calendar-header-cell {
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  border-right: 1px solid #D1D5DB;
+  border-bottom: 1px solid #D1D5DB;
+}
+
+.calendar-day {
+  padding: 0.5rem;
+  height: 5rem;
+  border-right: 1px solid #D1D5DB;
+  border-bottom: 1px solid #D1D5DB;
+  cursor: pointer;
+  vertical-align: top;
+  transition: background-color 0.2s;
+}
+
+.calendar-day:hover {
+  background-color: #F3F4F6;
+}
+
+.calendar-day-empty {
+  background-color: #F9FAFB;
+  padding: 0.5rem;
+  height: 5rem;
+  border-right: 1px solid #D1D5DB;
+  border-bottom: 1px solid #D1D5DB;
+}
+
+.calendar-day-today span {
+  background-color: rgba(0, 106, 113, 0.125);
+  color: #006A71;
+  font-weight: bold;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.calendar-day-selected {
+  background-color: #E1F0F1;
+}
+
+.calendar-day-selected span {
+  background-color: #48A6A7;
+  color: white;
+  font-weight: bold;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.calendar-day span {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.calendar-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #006A71;
+}
+
+.cal-btn {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #006A71;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  transition: 0.2s;
+}
+
+.cal-btn:hover {
+  color: #004e53;
+  transform: scale(1.1);
+}
+
+/* ===== CHAT BUBBLES ===== */
+.chat-bubble {
+  position: relative;
+  max-width: 28rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.chat-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border: 10px solid transparent;
+  border-bottom: 0;
+  margin-top: -10px;
+}
+
+.chat-bubble-sent {
+  background-color: #B6DBDC;
+  color: #1f2937;
+  border-bottom-right-radius: 0;
+}
+
+.chat-bubble-sent::after {
+  right: -10px;
+  border-top-color: #B6DBDC;
+}
+
+.chat-bubble-received {
+  background-color: #ffffff;
+  color: #1f2937;
+  border-bottom-left-radius: 0;
+}
+
+.chat-bubble-received::after {
+  left: -10px;
+  border-top-color: #ffffff;
+}
+
+/* Form Input */
+.form-input {
+  width: 100%;
+  padding: 0.5rem;
+  /* p-2 */
+  background-color: #f3f4f6;
+  /* bg-gray-100 */
+  border: 1px solid #d1d5db;
+  /* border-gray-300 */
+  border-radius: 0.5rem;
+  /* rounded-lg */
+  outline: none;
+  /* box-shadow: 0 0 0 1px #48a6a7; */
+  /* focus:ring-[#48A6A7] approximation */
+}
+
+.form-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px #48a6a7;
+}
+
+/* Save Button */
+.btn-save {
+  background-color: #48a6a7;
+  color: #ffffff;
+  padding: 0.5rem 1.5rem;
+  /* py-2 px-6 */
+  border-radius: 0.5rem;
+  font-weight: 600;
+  /* font-semibold */
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn-save:hover {
+  background-color: #3d8f90;
+}
+
+/* Delete Button */
+.btn-delete {
+  background-color: #dc2626;
+  /* red-600 */
+  color: #ffffff;
+  padding: 0.5rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn-delete:hover {
+  background-color: #b91c1c;
+  /* red-700 */
+}
+
+/* Cancel Button */
+.btn-cancel {
+  padding: 0.5rem 1.25rem;
+  /* py-2 px-5 */
+  border-radius: 0.5rem;
+  font-weight: 500;
+  /* font-medium */
+  background-color: #e5e7eb;
+  /* gray-200 */
+  color: #1f2937;
+  /* gray-800 */
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-cancel:hover {
+  background-color: #d1d5db;
+  /* gray-300 */
+}
+
+/* Day Toggle Buttons */
+.day-toggle-button {
+  padding: 0.5rem 1rem;
+  /* p-2 px-4 */
+  border-radius: 0.5rem;
+  font-weight: 500;
+  color: #4b5563;
+  /* gray-600 */
+  background-color: #f3f4f6;
+  /* gray-100 */
+  border: 1px solid #d1d5db;
+  /* gray-300 */
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.day-toggle-button:hover {
+  background-color: #e5e7eb;
+  /* gray-200 */
+}
+
+.day-toggle-button.active {
+  background-color: #006a71;
+  color: #ffffff;
+  border-color: #006a71;
+}
+
+.day-toggle-button.active:hover {
+  background-color: #005257;
+}
+
+/* Sidebar overlay sits below hamburger but above content */
+#sidebar {
+  width: 14rem;
+  /* 56 = 14rem */
 }

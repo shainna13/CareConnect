@@ -32,95 +32,200 @@ export default function ProfilePage() {
   const saveProfile = () => setIsEditing(false);
 
   return (
-    <div className="w-full h-full bg-[#e1eff1] flex overflow-auto">
-      {/* CONTENT BOX */}
-      <div className="w-4/5 h-full mx-auto my-10 bg-white rounded-xl shadow p-10">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEditing ? "Create Profile" : "Profile"}
-        </h1>
-        <p className="text-lg text-gray-600 mt-1">Personal Info</p>
+    <div className="flex-1 h-screen overflow-y-auto p-8 ml-0 transition-all duration-300">
+   <h1 className="text-3xl font-bold text-[#006A71] mb-6">Create Profile</h1>
 
-        {/* ==========================
-              EDIT MODE
-        ========================== */}
-        {isEditing && (
-          <div className="mt-8 space-y-6">
-            {/* 1. Profile Photo */}
-            <div>
-              <p className="font-semibold text-gray-700 mb-2">1. Profile Photo</p>
-              <div className="flex items-center space-x-6">
-                <div className="w-28 bg-gray-200 rounded-lg flex justify-center items-center overflow-hidden">
-                  {profile.photo ? (
-                    <img src={profile.photo} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-gray-500">No Image</span>
-                  )}
+      <div className="space-y-8">
+        {/* Personal Info Card */}
+        <div className="bg-white rounded-lg shadow-lg">
+          <form>
+            <div className="p-6 space-y-4">
+              <h2 className="text-xl font-semibold text-gray-800">Personal Info</h2>
+
+              <div className="flex items-center gap-4">
+                <div
+                  id="profile-image-preview"
+                  className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400"
+                >
+                  <svg
+                    className="w-10 h-10"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.25 15.75l5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                    />
+                  </svg>
                 </div>
 
-                <label className="text-teal-600 cursor-pointer hover:underline">
-                  Upload from device
-                  <input type="file" className="hidden" onChange={handlePhotoUpload} />
-                </label>
+                <input
+                  type="file"
+                  id="profile-image-upload"
+                  className="hidden"
+                  accept="image/*"
+                  required
+                  autoComplete="off"
+                />
+
+                <a
+                  href="#"
+                  id="upload-image-link"
+                  className="text-sm font-medium text-[#006A71] hover:underline"
+                >
+                  [Upload from device]
+                </a>
               </div>
+
+              <div>
+                <label htmlFor="full-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input type="text" id="full-name" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="specialization" className="block text-sm font-medium text-gray-700 mb-1">
+                  Specialization
+                </label>
+                <input type="text" id="specialization" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="license-number" className="block text-sm font-medium text-gray-700 mb-1">
+                  License Number
+                </label>
+                <input type="text" id="license-number" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="experience" className="block text-sm font-medium text-gray-700 mb-1">
+                  Years of Experience
+                </label>
+                <input type="number" id="experience" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+                  Short Bio
+                </label>
+                <textarea id="bio" rows="4" className="form-input" required autoComplete="off"></textarea>
+              </div>
+
+              <div id="personal-form-msg" className="text-sm mt-2"></div>
             </div>
 
-            {/* Inputs */}
-            <InputField label="2. Full Name" name="fullName" value={profile.fullName} onChange={handleInput} />
-            <InputField label="3. Specialization" name="specialization" value={profile.specialization} onChange={handleInput} />
-            <InputField label="4. License Number" name="license" value={profile.license} onChange={handleInput} />
-            <InputField label="5. Years of Experience" name="experience" value={profile.experience} onChange={handleInput} />
-            
-            {/* Bio */}
-            <div>
-              <p className="font-semibold text-gray-700 mb-2">5. Short Bio</p>
-              <textarea
-                name="bio"
-                value={profile.bio}
-                onChange={handleInput}
-                className="w-full bg-gray-100 rounded-md px-4 py-2 h-28 outline-none"
-              />
+            <div className="p-4 bg-gray-50 border-t border-gray-200 rounded-b-lg text-right">
+              <button type="submit" className="btn-save">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Contact Info Card */}
+        <div className="bg-white rounded-lg shadow-lg">
+          <form>
+            <div className="p-6 space-y-4">
+              <h2 className="text-xl font-semibold text-gray-800">Contact Info</h2>
+
+              <div>
+                <label htmlFor="clinic-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Clinic / Hospital Name
+                </label>
+                <input type="text" id="clinic-name" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="contact-number" className="block text-sm font-medium text-gray-700 mb-1">
+                  Contact Number
+                </label>
+                <input type="tel" id="contact-number" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input type="email" id="email" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div>
+                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+                  Location
+                </label>
+                <input type="text" id="location" className="form-input" required autoComplete="off" />
+              </div>
+
+              <div id="contact-form-msg" className="text-sm mt-2"></div>
             </div>
 
-            {/* Save button */}
-            <button
-              onClick={saveProfile}
-              className="bg-teal-600 text-white px-6 py-2 rounded-md float-right"
-            >
-              Save
-            </button>
+            <div className="p-4 bg-gray-50 border-t border-gray-200 rounded-b-lg text-right">
+              <button type="submit" className="btn-save">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Availability and Schedule Card */}
+        <div className="bg-white rounded-lg shadow-lg">
+          <form>
+            <div className="p-6 space-y-4">
+              <h2 className="text-xl font-semibold text-gray-800">Availability and Schedule</h2>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Open Days</label>
+                <div id="open-days-container" className="flex flex-wrap gap-2">
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                    <button key={day} type="button" data-day={day} className="day-toggle-button">
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Business Hours</label>
+                <div className="flex items-center gap-4">
+                  <input type="time" id="hours-from" className="form-input" required autoComplete="off" />
+                  <span className="text-gray-600">to</span>
+                  <input type="time" id="hours-to" className="form-input" required autoComplete="off" />
+                </div>
+              </div>
+
+              <div id="schedule-form-msg" className="text-sm mt-2"></div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-200 rounded-b-lg text-right">
+              <button type="submit" className="btn-save">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Delete Account Card */}
+        <div className="bg-white rounded-lg shadow-lg">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold text-red-600">Delete Account</h2>
+            <p className="text-gray-600 mt-2 text-sm">
+              Deleting your account is permanent and cannot be undone. All your data will be lost.
+            </p>
+            <div className="text-right mt-4">
+              <button type="button" id="delete-account-button" className="btn-delete">
+                Delete Account
+              </button>
+            </div>
           </div>
-        )}
-
-        {/* ==========================
-              PREVIEW MODE
-        ========================== */}
-        {!isEditing && (
-          <div className="mt-8 space-y-6">
-            {/* Profile Photo */}
-            <div>
-              <p className="font-semibold text-gray-700 mb-2">1. Profile Photo</p>
-              <img
-                src={profile.photo}
-                alt="Profile"
-                className="w-28 h-32 rounded-lg object-cover"
-              />
-            </div>
-
-            <PreviewField label="2. Full Name" value={profile.fullName} />
-            <PreviewField label="3. Specialization" value={profile.specialization} />
-            <PreviewField label="4. License Number" value={profile.license} />
-            <PreviewField label="5. Years of Experience" value={profile.experience + " years"} />
-            <PreviewField label="6. Short Bio" value={profile.bio} />
-
-            <button
-              onClick={() => setIsEditing(true)}
-              className="bg-teal-600 text-white px-6 py-2 rounded-md float-right"
-            >
-              Edit
-            </button>
-          </div>
-        )}
+        </div>
       </div>
+
+      <div className="h-8"></div>
     </div>
   );
 }

@@ -3,52 +3,50 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "🏠" },
-  { href: "/dashboard/appointments", label: "Appointments", icon: "📅" },
-  { href: "/dashboard/patients", label: "Patients", icon: "👥" },
-  { href: "/dashboard/chats", label: "Chats", icon: "💬" },
-  { href: "/dashboard/notifications", label: "Notifications", icon: "🔔" },
+  { href: "/dashboard", label: "Dashboard", icon: "/images/dashboard-icon.png" },
+  { href: "/dashboard/appointments", label: "Appointments", icon: "/images/appointments-icon.png" },
+  { href: "/dashboard/patients", label: "Patients", icon: "/images/patients-icon.png" },
+  { href: "/dashboard/chats", label: "Chats", icon: "/images/chats-icon.png" },
+  { href: "/dashboard/notifications", label: "Notifications", icon: "/images/notifications-icon.png" },
 ];
 
 const bottomItems = [
-  { href: "/dashboard/profile", label: "Profile", icon: "👤" },
-  { href: "/dashboard/logout", label: "Log Out", icon: "🚪" },
+  { href: "/dashboard/profile", label: "Profile", icon: "/images/profile-icon.png" },
+  { href: "/dashboard/logout", label: "Log Out", icon: "/images/logout-icon.png" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
 
   const linkClass = (href: string) =>
-    `flex items-center space-x-3 px-3 py-2 rounded-md ${
-      pathname === href ? "bg-teal-800" : "hover:bg-teal-800"
+    `flex items-center gap-3 py-3 px-6 font-medium text-white no-underline transition-colors duration-300 ${
+      pathname === href ? "bg-[#006A71] font-600" : "hover:bg-[#006A71]"
     }`;
 
   return (
-    <aside className="w-64 bg-[#48a6a7] text-white flex flex-col p-4">
-      <div className="text-2xl font-semibold mb-8">
-        <div className="flex flex-col">
-          <span>care</span>
-          <span className="-mt-2 text-sm">connect</span>
-        </div>
-      </div>
+    <aside className="sidebar">
+    <div className="flex items-center justify-center p-6 h-[102px]">
+      <img src="/images/careConnectLogo.png" alt="Care Connect Logo" className="w-20 object-contain" />
+    </div>
 
-      <nav className="flex flex-col space-y-4">
-        {navItems.map((item) => (
+    <nav className="flex-1 py-6 space-y-2">
+       {navItems.map((item) => (
           <Link key={item.href} href={item.href} className={linkClass(item.href)}>
-            <span>{item.icon}</span>
+            <img src={item.icon} alt={item.label} />
             <span>{item.label}</span>
           </Link>
         ))}
-      </nav>
+    </nav>
 
-      <div className="mt-auto flex flex-col space-y-3">
-        {bottomItems.map((item) => (
+    <div className="sidebar-footer">
+      {bottomItems.map((item) => (
           <Link key={item.href} href={item.href} className={linkClass(item.href)}>
-            <span>{item.icon}</span>
+            <img src={item.icon} alt={item.label} />
             <span>{item.label}</span>
           </Link>
         ))}
-      </div>
-    </aside>
+    </div>
+  </aside>
+
   );
 }

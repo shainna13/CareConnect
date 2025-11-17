@@ -6,28 +6,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
-// Colors used to match the reference
-// teal: #1f8f8b (used for buttons/accents), light teal background: #dff5f5
-
-/* ---------- Shared UI pieces ---------- */
-function IconUser() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 1118.879 6.196 9 9 0 015.12 17.804z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-  );
-}
-
-function IconEye() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-      <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-    </svg>
-  );
-}
-
 /* ---------- Login Page (app/login/page.tsx) ---------- */
 export default function LoginPage() {
   const router = useRouter();
@@ -41,101 +19,129 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#dff5f5] flex items-center justify-center p-6">
-      <div className="w-full max-w-5xl bg-white shadow-2xl rounded-lg overflow-hidden grid grid-cols-1 md:grid-cols-2">
-        {/* Left curved teal panel (SVG) */}
-        <div className="relative bg-teal-600 md:block hidden">
-          <svg viewBox="0 0 600 800" className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="g1" x1="0%" x2="100%" y1="0%" y2="100%">
-                <stop offset="0%" stopColor="#57b6b2" />
-                <stop offset="100%" stopColor="#1f8f8b" />
-              </linearGradient>
-            </defs>
-            <path d="M0,0 L350,0 Q500,200 350,600 L0,600 Z" fill="url(#g1)" />
-            <path d="M0,0 L300,0 Q460,160 300,560 L0,560 Z" fill="#9fe6e4" opacity="0.18" />
-          </svg>
+    <div className='bg-[#CCE5E7] flex items-center justify-center min-h-screen'>
+    <div className="flex w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden my-10">
 
-          <div className="relative h-full flex flex-col items-start justify-center p-12 text-white">
-            {/* Placeholder for your logo */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                {/* small placeholder icon */}
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M12 14l9-5-9-5-9 5 9 5z" />
-                </svg>
-              </div>
-              <div>
-                <div className="font-bold text-xl">Care Connect</div>
-                <div className="text-sm opacity-80">Healthcare Portal</div>
-              </div>
-            </div>
-
-            <h2 className="text-6xl font-extrabold opacity-40">Welcome</h2>
-          </div>
-        </div>
-
-        {/* Right form area */}
-        <div className="p-10 flex items-center justify-center">
-          <div className="w-full max-w-md">
-            <h1 className="text-3xl font-extrabold text-teal-800 mb-8 text-center">LOGIN</h1>
-
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div className="relative">
-                <input
-                  required
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg py-3 pl-4 pr-12 focus:outline-none focus:ring-2 focus:ring-teal-200"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <IconUser />
-                </div>
-              </div>
-
-              <div className="relative">
-                <input
-                  required
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg py-3 pl-4 pr-12 focus:outline-none focus:ring-2 focus:ring-teal-200"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <IconEye />
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <div />
-                <Link href="#" className="text-sm text-orange-500">Forgot Password?</Link>
-              </div>
-
-              <button className="w-36 mx-auto block bg-teal-800 text-white py-3 rounded-full shadow-md hover:shadow-lg transition">
-                Login
-              </button>
-
-              <div className="flex items-center gap-4">
-                <div className="flex-1 h-px bg-gray-200" />
-                <div className="text-sm text-gray-400">or</div>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-
-              <button type="button" className="w-full border border-gray-200 rounded-lg py-3 flex items-center justify-center gap-3">
-                <img src="/google-icon.svg" alt="Google" className="w-5 h-5" />
-                <span className="text-sm">Login with Google</span>
-              </button>
-
-              <p className="text-center text-sm text-gray-500">
-                New to Care Connect? <Link href="/register" className="text-orange-500 underline">Sign Up</Link>
-              </p>
-            </form>
-          </div>
-        </div>
+    {/* LEFT PANEL */}
+    <div className="left-panel-container w-5/12 p-12 text-white flex-col justify-center items-center hidden md:flex">
+      <div className="left-panel-content flex flex-col justify-center items-center text-center">
+        <img
+          src="images/careConnectLogo.png"
+          alt="Care Connect Logo"
+          className="w-[10.25rem] h-[10.25rem] mb-4 object-contain"
+        />
+        <p className="text-6xl font-extrabold text-white/60">Welcome</p>
       </div>
     </div>
+  
+    {/* RIGHT PANEL */}
+    <div className="w-full md:w-7/12 p-10 md:p-16 relative z-10 bg-white">
+  
+      {/* Login Form */}
+      <div id="login-form">
+        <h2 className="text-3xl font-extrabold text-[#006A71] mb-6 text-center">
+          LOGIN
+        </h2>
+  
+        <form id="login-form-element" onSubmit={handleLogin}>
+  
+          {/* Email */}
+          <div className="mb-4 relative">
+            <label htmlFor="login-email" className="sr-only">Email</label>
+            <input
+              type="email"
+              id="login-email"
+              placeholder="Email"
+              className="input-field"
+              required
+            />
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2.003 5.884L10 10.884l7.997-5A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                <path d="M18 8.116l-8 5-8-5V14a2 2 0 002 2h12a2 2 0 002-2V8.116z" />
+              </svg>
+            </span>
+          </div>
+  
+          {/* Password */}
+          <div className="mb-4 relative">
+            <label htmlFor="login-password" className="sr-only">Password</label>
+            <input
+              type="password"
+              id="login-password"
+              placeholder="Password"
+              className="input-field"
+              required
+            />
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fillRule="evenodd"
+                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
+  
+            <button
+              type="button"
+              id="login-toggle-password"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"
+            >
+              {/* Eye icon */}
+              <svg id="login-eye-icon" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5"
+                viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                <path
+                  fillRule="evenodd"
+                  d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+  
+              {/* Eye slash icon */}
+              <svg id="login-eye-slash-icon" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 hidden"
+                viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fillRule="evenodd"
+                  d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A9.935 9.935 0 0010 3C5.522 3 1.732 5.943.458 10a12.721 12.721 0 003.118 4.719L3.707 2.293zM10 12a2 2 0 100-4 2 2 0 000 4z"
+                  clipRule="evenodd"
+                />
+                <path d="M10 17a9.95 9.95 0 01-5.718-1.71L1.39 12.4a1 1 0 010-1.414l.038-.038A9.98 9.98 0 0110 3a9.98 9.98 0 018.53 5.828l.038.038a1 1 0 010 1.414l-2.89 2.89A9.95 9.95 0 0110 17z" />
+              </svg>
+            </button>
+          </div>
+  
+          <a href="#" className="text-link block text-right mb-4 text-sm">
+            Forgot Password?
+          </a>
+  
+          <button type="submit" id="login-button" className="btn-primary">
+            Login
+          </button>
+        </form>
+  
+        {/* OR Separator */}
+        <div className="flex items-center my-6">
+          <hr className="flex-grow border-t border-gray-300" />
+          <span className="px-4 text-gray-500 text-sm">or</span>
+          <hr className="flex-grow border-t border-gray-300" />
+        </div>
+  
+        {/* Google Login */}
+        <button id="google-login-button" className="btn-google">
+          <img src="images/google-icon.png" alt="Google Icon" className="w-6 h-6" />
+          Login with Google
+        </button>
+  
+        {/* Link to Sign Up */}
+        <p className="text-center text-sm text-gray-400 mt-8">
+          New to Care Connect?
+          <Link href="/register" id="show-signup-form" className="text-link">Sign Up</Link>
+        </p>
+      </div>
+    </div>
+  </div>
+  </div>
   );
 }
