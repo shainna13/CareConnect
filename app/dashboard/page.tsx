@@ -13,8 +13,8 @@ export default function DashboardHome() {
             <div className="w-24 h-24 bg-gray-200 rounded-md"></div>
   
             <div>
-              <h1 className="text-2xl font-semibold">Dr. {accountData?.name}</h1>
-              <p className="text-orange-500 text-sm mt-1">
+              <h1 className="text-2xl font-semibold !mb-0">Dr. {accountData?.name}</h1>
+              <p className="text-orange-500 text-sm mb-2">
                 Your profile is incomplete. Complete it now to appear in patient search.
               </p>
   

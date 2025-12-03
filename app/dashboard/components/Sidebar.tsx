@@ -39,7 +39,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="flex items-center justify-center p-6 h-[102px]">
-        <img src="/images/careConnectLogo.png" alt="Care Connect Logo" className="w-20 object-contain" />
+        <img src="/images/careConnectLogo.png" alt="Care Connect Logo" className="w-[110px] object-contain" />
       </div>
 
       <nav className="flex-1 py-6 space-y-2">
