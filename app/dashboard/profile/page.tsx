@@ -47,16 +47,69 @@ export default function ProfilePage() {
     const { name, value } = e.target;
     setProfile((prev: any) => ({ ...prev, [name]: value }));
   };
+const handlePhotoUpload = async (e: any) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-  const handlePhotoUpload = (e: any) => {
-    const file = e.target.files[0];
-    if (file) {
-      setProfile((prev: any) => ({
-        ...prev,
-        photo: URL.createObjectURL(file),
-      }));
-    }
-  };
+  try {
+    console.log("Reading and compressing image...");
+    console.log("Original size:", file.size, "bytes");
+
+    const reader = new FileReader();
+
+    reader.onload = (readerEvent) => {
+      const imgElement = new Image();
+      imgElement.src = readerEvent.target?.result as string;
+
+      imgElement.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxSize = 400;
+
+        let width = imgElement.width;
+        let height = imgElement.height;
+
+        // Maintain aspect ratio while resizing
+        if (width > height) {
+          if (width > maxSize) {
+            height = (height * maxSize) / width;
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = (width * maxSize) / height;
+            height = maxSize;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(imgElement, 0, 0, width, height);
+
+        // Convert resized image to compressed JPEG Base64
+        const compressedBase64 = canvas.toDataURL("data:image/jpeg;base64", 0.8);
+
+        console.log("Compressed size:", compressedBase64.length, "bytes");
+
+        // Update preview only (Firestore update happens in saveProfile)
+        setProfile((prev: any) => ({
+          ...prev,
+          photo: compressedBase64,
+        }));
+
+        console.log("Image ready for Firestore (via saveProfile)");
+      };
+    };
+
+    // Start reading the original file
+    reader.readAsDataURL(file);
+
+  } catch (error) {
+    console.error("Upload error:", error);
+    alert("Failed to upload image.");
+  }
+};
 
   const saveProfile = async () => {
     if (!accountData) return;
@@ -96,12 +149,11 @@ export default function ProfilePage() {
             {/* Photo Upload */}
             <div className="flex items-center gap-4">
               <div
-                className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400"
+                className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 overflow-hidden"
               >
                 {profile.photo ? (
                   <img src={profile.photo} alt="Profile" className="w-full h-full object-cover rounded-lg" />
-                ) : (
-                  <span>Photo</span>
+                ) : (                  <span>Photo</span>
                 )}
               </div>
 

@@ -1,100 +1,122 @@
 'use client';
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useUser } from "@/app/src/lib/context/UserContext";
 
-// 1. Define an Interface for type safety
-// [FIREBASE - BACKEND] DATA MODEL
-// Ensure the Firestore "patients" collection documents match this structure.
+// Interface for type safety
+interface AppointmentRecord {
+    id: string;
+    clientId: string;
+    clientName: string;
+    clientEmail: string;
+    bodyTemperature?: string;
+    onsetSymptoms?: string;
+    painLocation?: string;
+    painIntensity?: string;
+    currentMedication?: string;
+    medicationPrescribe?: string;
+    patientFeels?: string;
+    approved?: string | boolean;
+    timestamp?: number;
+    message?: string;
+}
+
 interface Patient {
-    id: number; // or string if using Firestore auto-generated IDs
+    id: string; // clientId
     name: string;
-    age: number;
-    gender: "Male" | "Female";
-    condition: string;
-    img: string | null; // [FIREBASE - BACKEND] This should be a Firebase Storage Download URL
-    phone: string;
     email: string;
-    address: string;
-    lastVisit: string; // Store as Timestamp in DB, convert to string for frontend
-    notes: string;
+    phone?: string;
+    approved: string | boolean; // 'true' for approved
+    firstApprovedDate?: number;
+    lastAppointmentDate?: number;
+    appointments: AppointmentRecord[]; // All appointments from this patient
 }
 
 export default function PatientsPage() {
+    const { accountData } = useUser();
+    
     // --- STATES ---
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
     const [isEditing, setIsEditing] = useState(false); 
-    const [editFormData, setEditFormData] = useState<Patient | null>(null); 
+    const [editFormData, setEditFormData] = useState<Patient | null>(null);
+    const [patients, setPatients] = useState<Patient[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [doctorId, setDoctorId] = useState<string>("");
 
-    // [FIREBASE - BACKEND] READ OPERATION (FETCH PATIENTS)
-    // 1. Replace this mock array with a `useEffect` that fetches the "patients" collection.
-    // 2. Map the Firestore snapshot to this `patients` state.
-    const [patients, setPatients] = useState<Patient[]>([
-        {
-            id: 1,
-            name: "John Cruz",
-            age: 34,
-            gender: "Male",
-            condition: "Atopic dermatitis",
-            img: "/john.png", //Replace this with the profile image set by the patient.
-            phone: "+1 (555) 123-4567",
-            email: "john.cruz@example.com",
-            address: "123 Maple Ave, Springfield",
-            lastVisit: "Oct 24, 2025",
-            notes: "Patient reports flare-ups during colder weather. Prescribed topical corticosteroids.",
-        },
-        {
-            id: 2,
-            name: "Maria Lopez",
-            age: 28,
-            gender: "Female",
-            condition: "Acne vulgaris",
-            img: null, //Replace this with the profile image set by the patient.
-            phone: "+1 (555) 987-6543",
-            email: "m.lopez@example.com",
-            address: "45 Sunset Blvd, Miami",
-            lastVisit: "Nov 02, 2025",
-            notes: "Undergoing salicylic acid treatment. Shows 20% improvement.",
-        },
-        {
-            id: 3,
-            name: "Ana Reyes",
-            age: 23,
-            gender: "Female",
-            condition: "Rosacea",
-            img: null, //Replace this with the profile image set by the patient.
-            phone: "+1 (555) 444-3333",
-            email: "ana.r@example.com",
-            address: "88 Highland Dr, Seattle",
-            lastVisit: "Dec 10, 2025",
-            notes: "Triggers include spicy food and stress. Recommended lifestyle changes.",
-        },
-        {
-            id: 4,
-            name: "Paul Tomas",
-            age: 23,
-            gender: "Male",
-            condition: "Skin Allergy",
-            img: null, //Replace this with the profile image set by the patient.
-            phone: "+1 (555) 222-1111",
-            email: "paul.t@example.com",
-            address: "12 Ocean View, San Diego",
-            lastVisit: "Dec 15, 2025",
-            notes: "Allergic reaction to new laundry detergent. Prescribed antihistamines.",
-        },
-        {
-            id: 5,
-            name: "Carl Ramos",
-            age: 46,
-            gender: "Male",
-            condition: "Hives",
-            img: null, //Replace this with the profile image set by the patient.
-            phone: "+1 (555) 666-7777",
-            email: "carl.ramos@example.com",
-            address: "555 Pine St, Austin",
-            lastVisit: "Nov 20, 2025",
-            notes: "Chronic hives lasting > 6 weeks. Ordered blood panel.",
-        },
-    ]);
+    // --- FETCH PATIENTS FROM FIREBASE ---
+    useEffect(() => {
+        const getDoctorId = () => {
+            if (accountData?.id) {
+                return accountData.id;
+            }
+            return localStorage.getItem('doctorId') || "";
+        };
+
+        const fetchPatients = async () => {
+            try {
+                setLoading(true);
+                const id = getDoctorId();
+                setDoctorId(id);
+
+                if (!id) {
+                    console.error("Doctor ID not found");
+                    setLoading(false);
+                    return;
+                }
+
+                // Fetch all appointments for this doctor
+                const response = await fetch(`/api/appointments/fetch?doctorId=${id}`);
+                const data = await response.json();
+
+                if (data.appointments && data.appointments.length > 0) {
+                    // Group appointments by patient
+                    const patientMap = new Map<string, Patient>();
+
+                    data.appointments.forEach((appt: any) => {
+                        const appointmentData = appt.data;
+                        const clientId = appointmentData.clientId;
+
+                        if (!patientMap.has(clientId)) {
+                            patientMap.set(clientId, {
+                                id: clientId,
+                                name: appointmentData.clientName,
+                                email: appointmentData.clientEmail,
+                                phone: appointmentData.phone || '',
+                                approved: appointmentData.approved,
+                                firstApprovedDate: appointmentData.approved === 'true' ? appointmentData.timestamp : undefined,
+                                lastAppointmentDate: appointmentData.timestamp,
+                                appointments: [],
+                            });
+                        }
+
+                        const patient = patientMap.get(clientId)!;
+                        patient.appointments.push({
+                            id: appt.id,
+                            ...appointmentData,
+                        });
+
+                        // Update last appointment date
+                        if (!patient.lastAppointmentDate || appointmentData.timestamp > patient.lastAppointmentDate) {
+                            patient.lastAppointmentDate = appointmentData.timestamp;
+                        }
+                    });
+
+                    // Convert to array and filter - only show approved patients
+                    const approvedPatients = Array.from(patientMap.values())
+                        .filter(patient => patient.approved === 'true');
+
+                    setPatients(approvedPatients);
+                }
+
+                setLoading(false);
+            } catch (error) {
+                console.error("Error fetching patients:", error);
+                setLoading(false);
+            }
+        };
+
+        fetchPatients();
+    }, [accountData?.id]);
 
     // --- HANDLERS ---
 
@@ -124,20 +146,19 @@ export default function PatientsPage() {
         if (!editFormData) return;
 
         try {
-            // [TODO] 1. Create a reference to the specific document: doc(db, "patients", editFormData.id)
-            // [TODO] 2. Perform: await updateDoc(docRef, editFormData);
+            // Note: Patient data is auto-generated from appointments
+            // Edit functionality could save doctor's notes about the patient
             
-            // 3. Optimistic UI Update (Update local state immediately)
+            // Optimistic UI Update
             setPatients(prev => prev.map(p => p.id === editFormData.id ? editFormData : p));
             setSelectedPatient(editFormData);
             
-            // 4. Exit edit mode
+            // Exit edit mode
             setIsEditing(false);
             
-            console.log("Saving to Firebase:", editFormData); // Debug log
+            console.log("Saving patient data:", editFormData);
         } catch (error) {
-            console.error("Error updating document:", error);
-            // Handle error (e.g., show toast notification)
+            console.error("Error updating patient:", error);
         }
     };
 
@@ -151,42 +172,54 @@ export default function PatientsPage() {
         <div className="p-6 relative min-h-screen">
             <h1 className="text-2xl font-semibold mb-6 text-gray-800">Patients</h1>
             
-            {/* Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {patients.map((p) => (
-                    <div
-                        key={p.id}
-                        className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center border border-gray-100 hover:shadow-md transition-shadow duration-200"
-                    >
-                        {p.img ? (
-                            // [FIREBASE - BACKEND] Ensure 'p.img' is a valid URL
-                            <img src={p.img} alt={p.name} className="w-24 h-24 rounded-full object-cover mb-3 bg-gray-100" />
-                        ) : (
-                            <div className="w-24 h-24 bg-teal-50 text-teal-600 rounded-full mb-3 flex items-center justify-center text-2xl font-bold">
-                                {p.name.charAt(0)}
-                            </div>
-                        )}
-
-                        <p className="font-semibold text-lg text-gray-900">{p.name}</p>
-
-                        <div className="mt-1 text-sm text-gray-600">
-                            <span className="font-medium">{p.age} Years</span> •{" "}
-                            <span>{p.gender}</span>
-                        </div>
-
-                        <span className="mt-3 px-3 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
-                            {p.condition}
-                        </span>
-
-                        <button 
-                            onClick={() => handleViewClick(p)}
-                            className="mt-5 w-full bg-teal-600 hover:bg-teal-700 text-white py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                            View Profile
-                        </button>
+            {loading ? (
+                <div className="flex items-center justify-center min-h-[400px]">
+                    <div className="text-center">
+                        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mb-4"></div>
+                        <p className="text-gray-500">Loading patients...</p>
                     </div>
-                ))}
-            </div>
+                </div>
+            ) : patients.length === 0 ? (
+                <div className="flex items-center justify-center min-h-[400px]">
+                    <div className="text-center">
+                        <p className="text-gray-500 text-lg">No approved patients yet.</p>
+                        <p className="text-gray-400 text-sm mt-1">Approve appointment requests to see patients here.</p>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {/* Cards Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {patients.map((p) => (
+                            <div
+                                key={p.id}
+                                className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center border border-gray-100 hover:shadow-md transition-shadow duration-200"
+                            >
+                                <div className="w-24 h-24 bg-teal-50 text-teal-600 rounded-full mb-3 flex items-center justify-center text-2xl font-bold">
+                                    {p.name.charAt(0)}
+                                </div>
+
+                                <p className="font-semibold text-lg text-gray-900">{p.name}</p>
+
+                                <div className="mt-1 text-sm text-gray-600">
+                                    <span className="font-medium">{p.appointments.length}</span> {p.appointments.length === 1 ? 'appointment' : 'appointments'}
+                                </div>
+
+                                <span className="mt-3 px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                    Approved
+                                </span>
+
+                                <button 
+                                    onClick={() => handleViewClick(p)}
+                                    className="mt-5 w-full bg-teal-600 hover:bg-teal-700 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    View Profile
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
 
             {/* --- DETAILED PROFILE MODAL --- */}
             {selectedPatient && (
@@ -196,18 +229,14 @@ export default function PatientsPage() {
                         {/* Header */}
                         <div className="bg-teal-600 p-6 text-white flex justify-between items-start shrink-0">
                             <div className="flex items-center gap-4 w-full">
-                                {selectedPatient.img ? (
-                                    <img src={selectedPatient.img} alt={selectedPatient.name} className="w-20 h-20 rounded-full border-4 border-white/30" />
-                                ) : (
-                                    <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
-                                        {selectedPatient.name.charAt(0)}
-                                    </div>
-                                )}
+                                <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold border-4 border-white/30">
+                                    {selectedPatient.name.charAt(0)}
+                                </div>
                                 
                                 {/* CONDITIONAL RENDERING: EDIT MODE VS VIEW MODE IN HEADER */}
                                 {isEditing && editFormData ? (
                                     <div className="flex-1 mr-8">
-                                        {/* [FIREBASE - BACKEND] Editing Name */}
+                                        {/* Editing Name */}
                                         <input 
                                             name="name" 
                                             value={editFormData.name} 
@@ -215,32 +244,12 @@ export default function PatientsPage() {
                                             className="w-full text-2xl font-bold bg-white/20 border border-white/30 rounded px-2 py-1 mb-1 text-white placeholder-white/70 focus:outline-none focus:bg-white/30"
                                             placeholder="Name"
                                         />
-                                        <div className="flex gap-2">
-                                            {/* [FIREBASE - BACKEND] Editing Gender */}
-                                            <select 
-                                                name="gender" 
-                                                value={editFormData.gender} 
-                                                onChange={handleInputChange} 
-                                                className="bg-white/20 border border-white/30 rounded px-2 py-1 text-sm text-white focus:outline-none [&>option]:text-black"
-                                            >
-                                                <option value="Male">Male</option>
-                                                <option value="Female">Female</option>
-                                            </select>
-                                            {/* [FIREBASE - BACKEND] Editing Age */}
-                                            <input 
-                                                type="number" 
-                                                name="age" 
-                                                value={editFormData.age} 
-                                                onChange={handleInputChange} 
-                                                className="w-20 bg-white/20 border border-white/30 rounded px-2 py-1 text-sm text-white focus:outline-none" 
-                                                placeholder="Age"
-                                            />
-                                        </div>
+                                        <p className="text-sm opacity-90">{editFormData.email}</p>
                                     </div>
                                 ) : (
                                     <div>
                                         <h2 className="text-2xl font-bold">{selectedPatient.name}</h2>
-                                        <p className="opacity-90">{selectedPatient.gender}, {selectedPatient.age} Years Old</p>
+                                        <p className="opacity-90">{selectedPatient.email}</p>
                                     </div>
                                 )}
                             </div>
@@ -259,95 +268,71 @@ export default function PatientsPage() {
                                     <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Contact Information</h3>
                                     <div className="space-y-3 text-sm">
                                         <div className="flex items-center gap-3 text-gray-700">
-                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">📞</div>
-                                            {isEditing && editFormData ? (
-                                                <input 
-                                                    name="phone" 
-                                                    value={editFormData.phone} 
-                                                    onChange={handleInputChange} 
-                                                    className="w-full border border-gray-300 rounded px-2 py-1 focus:border-teal-500 focus:outline-none" 
-                                                />
-                                            ) : (
-                                                selectedPatient.phone
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-3 text-gray-700">
                                             <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">✉️</div>
-                                            {isEditing && editFormData ? (
-                                                <input 
-                                                    name="email" 
-                                                    value={editFormData.email} 
-                                                    onChange={handleInputChange} 
-                                                    className="w-full border border-gray-300 rounded px-2 py-1 focus:border-teal-500 focus:outline-none" 
-                                                />
-                                            ) : (
-                                                selectedPatient.email
-                                            )}
+                                            {selectedPatient.email}
                                         </div>
                                         <div className="flex items-center gap-3 text-gray-700">
-                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">📍</div>
-                                            {isEditing && editFormData ? (
-                                                <input 
-                                                    name="address" 
-                                                    value={editFormData.address} 
-                                                    onChange={handleInputChange} 
-                                                    className="w-full border border-gray-300 rounded px-2 py-1 focus:border-teal-500 focus:outline-none" 
-                                                />
-                                            ) : (
-                                                selectedPatient.address
-                                            )}
+                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">📞</div>
+                                            {selectedPatient.phone || 'Not provided'}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Medical Info */}
+                                {/* Appointment Stats */}
                                 <div>
-                                    <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Medical Details</h3>
-                                    <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-                                        <p className="text-xs text-orange-600 font-bold mb-1">PRIMARY CONDITION</p>
-                                        {isEditing && editFormData ? (
-                                            <input 
-                                                name="condition" 
-                                                value={editFormData.condition} 
-                                                onChange={handleInputChange} 
-                                                className="w-full border border-orange-200 rounded px-2 py-1 text-gray-800 font-semibold focus:border-orange-400 focus:outline-none" 
-                                            />
-                                        ) : (
-                                            <p className="text-lg font-semibold text-gray-800">{selectedPatient.condition}</p>
-                                        )}
+                                    <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Appointment History</h3>
+                                    <div className="bg-teal-50 p-4 rounded-lg border border-teal-100">
+                                        <p className="text-xs text-teal-600 font-bold mb-1">TOTAL APPOINTMENTS</p>
+                                        <p className="text-lg font-semibold text-gray-800">{selectedPatient.appointments.length}</p>
                                     </div>
-                                    <div className="mt-4">
-                                        <p className="text-xs text-gray-400 font-bold mb-1">LAST APPOINTMENT</p>
-                                        {isEditing && editFormData ? (
-                                            <input 
-                                                name="lastVisit" 
-                                                value={editFormData.lastVisit} 
-                                                onChange={handleInputChange} 
-                                                className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:border-teal-500 focus:outline-none" 
-                                            />
-                                        ) : (
-                                            <p className="text-gray-700 font-medium">{selectedPatient.lastVisit}</p>
-                                        )}
-                                    </div>
+                                    {selectedPatient.lastAppointmentDate && (
+                                        <div className="mt-4">
+                                            <p className="text-xs text-gray-400 font-bold mb-1">LAST APPOINTMENT</p>
+                                            <p className="text-gray-700 font-medium">
+                                                {new Date(selectedPatient.lastAppointmentDate).toLocaleDateString('en-US', { 
+                                                    year: 'numeric', 
+                                                    month: 'short', 
+                                                    day: 'numeric' 
+                                                })}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Notes Section */}
+                            {/* Appointments List */}
                             <div className="mt-6 border-t pt-6">
-                                <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">Doctor's Notes</h3>
-                                {isEditing && editFormData ? (
-                                    <textarea 
-                                        name="notes" 
-                                        value={editFormData.notes} 
-                                        onChange={handleInputChange} 
-                                        rows={4}
-                                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-teal-500 focus:outline-none resize-none"
-                                    />
-                                ) : (
-                                    <p className="text-gray-600 bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm leading-relaxed">
-                                        {selectedPatient.notes}
-                                    </p>
-                                )}
+                                <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3">Medical Records</h3>
+                                <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                                    {selectedPatient.appointments.length > 0 ? (
+                                        selectedPatient.appointments
+                                            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+                                            .map((appt, idx) => (
+                                                <div key={appt.id} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <p className="font-semibold text-gray-800">Appointment #{selectedPatient.appointments.length - idx}</p>
+                                                        <span className="text-xs text-gray-500">
+                                                            {new Date(appt.timestamp || 0).toLocaleDateString('en-US', { 
+                                                                month: 'short', 
+                                                                day: 'numeric',
+                                                                year: 'numeric'
+                                                            })}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-sm text-gray-600 space-y-1">
+                                                        {appt.onsetSymptoms && <p><span className="font-medium">Symptoms:</span> {appt.onsetSymptoms}</p>}
+                                                        {appt.painLocation && <p><span className="font-medium">Pain Location:</span> {appt.painLocation}</p>}
+                                                        {appt.painIntensity && <p><span className="font-medium">Pain Intensity:</span> {appt.painIntensity}</p>}
+                                                        {appt.bodyTemperature && <p><span className="font-medium">Temperature:</span> {appt.bodyTemperature}</p>}
+                                                        {appt.currentMedication && <p><span className="font-medium">Current Medication:</span> {appt.currentMedication}</p>}
+                                                        {appt.patientFeels && <p><span className="font-medium">Patient Feels:</span> {appt.patientFeels}</p>}
+                                                    </div>
+                                                </div>
+                                            ))
+                                    ) : (
+                                        <p className="text-gray-500 text-sm">No appointment records available.</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
 

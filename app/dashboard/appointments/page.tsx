@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Calendar from "react-calendar";
+import { useAppointments } from "@/app/src/lib/hooks/useAppointments";
+import { useUser } from "@/app/src/lib/context/UserContext";
+import { ConfirmationDialog } from "@/app/src/components/ConfirmationDialog";
 
 // --- INTERFACES ---
 interface TimeSlot {
@@ -13,48 +16,132 @@ interface TimeSlot {
 // Ensure the "appointments" collection documents match this structure.
 // Note: 'dateKey' is used for querying (e.g., where("dateKey", "==", selectedDate)).
 interface Appointment {
-    id: number; // Firestore Document ID (string) recommended, but number used here for UI
-    name: string;
-    dateKey: string; // The date string (e.g., "Sat Dec 20 2025")
-    time: string;    // "08:30 AM"
-    status: 'Pending' | 'Confirmed';
+    id: string; // Firestore Document ID
+    clientName: string;
+    doctorId: string;
+    clientId: string;
+    clientEmail: string;
+    dateKey?: string; // The date string (e.g., "Sat Dec 20 2025")
+    time?: string;    // "08:30 AM"
+    approved?: string | boolean; // 'true', 'false', or boolean
     message?: string; 
-    timestamp?: string; 
+    timestamp?: number; 
+    bodyTemperature?: string;
+    onsetSymptoms?: string;
+    painLocation?: string;
+    painIntensity?: string;
+    currentMedication?: string;
+    medicationPrescribe?: string;
+    patientFeels?: string;
 }
 
 // --- HELPER ---
 const getDateKey = (date: Date) => date.toDateString();
 
-// --- INITIAL MOCK DATA (Single Source of Truth) ---
-const INITIAL_APPOINTMENTS: Appointment[] = [
-    // Dec 20, 2025
-    { id: 101, name: "John Cruz", dateKey: getDateKey(new Date(2025, 11, 20)), time: "08:30 AM", status: "Pending", message: "New appointment", timestamp: "2 mins ago" },
-    { id: 102, name: "Maria Lopez", dateKey: getDateKey(new Date(2025, 11, 20)), time: "09:15 AM", status: "Confirmed" },
-    { id: 103, name: "Ana Reyes", dateKey: getDateKey(new Date(2025, 11, 20)), time: "10:00 AM", status: "Confirmed" },
-    
-    // Dec 28, 2025
-    { id: 104, name: "Paul Tomas", dateKey: getDateKey(new Date(2025, 11, 28)), time: "11:30 AM", status: "Pending", message: "New appointment", timestamp: "3 hrs ago" },
-    { id: 105, name: "Carl Ramos", dateKey: getDateKey(new Date(2025, 11, 28)), time: "01:30 PM", status: "Confirmed" }
-];
+// Helper to compare dates by year/month/day
+const isSameDay = (date1: Date, date2: Date): boolean => {
+    return date1.getFullYear() === date2.getFullYear() &&
+           date1.getMonth() === date2.getMonth() &&
+           date1.getDate() === date2.getDate();
+};
+
+// --- FORMAT TIMESTAMP ---
+const formatTimeAgo = (timestamp: number): string => {
+    if (!timestamp) return "";
+    const now = Date.now();
+    const diffMs = now - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}min ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return "1w ago";
+};
 
 export default function AppointmentsPage() {
-    const [date, setDate] = useState<any>(new Date());
+    const { fetchAppointments, respondToAppointment, loading, error: apiError } = useAppointments();
+    const { accountData } = useUser(); // Get doctorId from UserContext
+    const [date, setDate] = useState<Date>(new Date());
+    const [doctorId, setDoctorId] = useState<string>("");
     
     // --- MASTER STATE ---
-    // [FIREBASE - BACKEND] READ OPERATION (APPOINTMENTS)
-    // 1. Fetch from "appointments" collection.
-    // 2. Ideally, set up a real-time listener (onSnapshot) to catch incoming "Pending" requests immediately.
-    const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
+    // Fetch from Firebase Firestore using the API
+    const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [loadingAppointments, setLoadingAppointments] = useState(true);
 
     // --- DERIVED STATES ---
     const pendingRequests = useMemo(() => {
-        return appointments.filter(appt => appt.status === 'Pending');
+        return appointments.filter(appt => !appt.approved || appt.approved === 'false');
     }, [appointments]);
 
     const currentDayAppointments = useMemo(() => {
-        const key = getDateKey(date);
-        return appointments.filter(appt => appt.dateKey === key);
+        const filtered = appointments.filter(appt => {
+            if (!appt.timestamp) {
+                return false;
+            }
+            const appointmentDate = new Date(appt.timestamp);
+            return isSameDay(appointmentDate, date);
+        });
+        return filtered;
     }, [appointments, date]);
+
+    // --- SET DOCTOR ID FROM USERCONTEXT OR LOCALSTORAGE ---
+    useEffect(() => {
+        if (accountData?.id) {
+            // If UserContext has the ID, use it
+            setDoctorId(accountData.id);
+        } else {
+            // Fallback to localStorage
+            const storedDoctorId = localStorage.getItem('doctorId')||"no doctor assigned";
+            setDoctorId(storedDoctorId);
+        }
+    }, [accountData?.id]); // Re-run when accountData changes
+
+    // --- LOAD APPOINTMENTS ON MOUNT AND WHEN DOCTOR CHANGES ---
+    useEffect(() => {
+        const loadAppointments = async () => {
+            if (!doctorId) return;
+            
+            setLoadingAppointments(true);
+            const result = await fetchAppointments({ doctorId });
+            
+            if (result) {
+                // Transform API response to match local interface
+                const transformedAppointments = result.map((appt) => {
+                  const appointmentData = appt.data;
+                  // Timestamp from API is already a number in milliseconds
+                  const timestamp = appointmentData.timestamp || Date.now();
+                  
+                  return {
+                    id: appt.id,
+                    clientName: appointmentData.clientName,
+                    doctorId: appointmentData.doctorId,
+                    clientId: appointmentData.clientId,
+                    clientEmail: appointmentData.clientEmail,
+                    dateKey: getDateKey(new Date(timestamp)),
+                    approved: appointmentData.approved,
+                    message: appointmentData.message,
+                    timestamp: timestamp,
+                    bodyTemperature: appointmentData.bodyTemperature,
+                    onsetSymptoms: appointmentData.onsetSymptoms,
+                    painLocation: appointmentData.painLocation,
+                    painIntensity: appointmentData.painIntensity,
+                    currentMedication: appointmentData.currentMedication,
+                    medicationPrescribe: appointmentData.medicationPrescribe,
+                    patientFeels: appointmentData.patientFeels,
+                  };
+                });
+                
+                setAppointments(transformedAppointments);
+            }
+            setLoadingAppointments(false);
+        };
+
+        loadAppointments();
+    }, [doctorId, fetchAppointments]);
 
 
     // --- SCHEDULE STATES ---
@@ -74,14 +161,27 @@ export default function AppointmentsPage() {
     const [defaultSchedule, setDefaultSchedule] = useState<TimeSlot[]>([]);
 
     // --- UI STATES ---
-    const [expandedRequestId, setExpandedRequestId] = useState<number | null>(null);
+    const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
     const [isMainModalOpen, setIsMainModalOpen] = useState(false);
     const [isAddPopupOpen, setIsAddPopupOpen] = useState(false);
     const [newTimeInput, setNewTimeInput] = useState("");
     const [selectedSlotData, setSelectedSlotData] = useState<{ slot: TimeSlot, index: number } | null>(null);
     const [tempSlots, setTempSlots] = useState<TimeSlot[]>([]);
     const [isApplyAllActive, setIsApplyAllActive] = useState(false);
-    const [rejectingItem, setRejectingItem] = useState<{ id: number, name: string } | null>(null);
+    const [rejectingItem, setRejectingItem] = useState<{ id: string, clientName: string } | null>(null);
+    
+    // --- CONFIRMATION DIALOG STATES ---
+    const [confirmDialog, setConfirmDialog] = useState<{
+        isOpen: boolean;
+        type: 'accept' | 'reject' | null;
+        appointmentId: string | null;
+        clientName: string | null;
+    }>({
+        isOpen: false,
+        type: null,
+        appointmentId: null,
+        clientName: null,
+    });
 
     // --- FORMATTERS ---
     const formattedDateHeader = date.toLocaleDateString('en-US', {
@@ -108,28 +208,65 @@ export default function AppointmentsPage() {
     // --- HANDLERS ---
     
     // [FIREBASE - BACKEND] UPDATE OPERATION (ACCEPT)
-    // 1. Target document: "appointments/{idToAccept}"
-    // 2. Action: await updateDoc(ref, { status: 'Confirmed' })
-    const handleAccept = (idToAccept: number) => {
-        // Optimistic UI Update
-        setAppointments(prev => prev.map(appt => 
-            appt.id === idToAccept ? { ...appt, status: 'Confirmed' } : appt
-        ));
-        if(expandedRequestId === idToAccept) setExpandedRequestId(null);
+    // Show confirmation dialog before accepting
+    const handleAcceptClick = (appointmentId: string, clientName: string) => {
+        setConfirmDialog({
+            isOpen: true,
+            type: 'accept',
+            appointmentId,
+            clientName,
+        });
     };
 
-    const handleRejectClick = (item: { id: number, name: string }) => {
-        setRejectingItem(item);
+    const handleAcceptConfirm = async () => {
+        if (!confirmDialog.appointmentId) return;
+        
+        const success = await respondToAppointment(
+            confirmDialog.appointmentId,
+            'accept',
+            doctorId
+        );
+        
+        if (success) {
+            // Update local state optimistically
+            setAppointments(prev => prev.map(appt => 
+                appt.id === confirmDialog.appointmentId ? { ...appt, approved: 'true' } : appt
+            ));
+            if(expandedRequestId === confirmDialog.appointmentId) setExpandedRequestId(null);
+        }
+        
+        setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null });
     };
 
-    // [FIREBASE - BACKEND] UPDATE/DELETE OPERATION (REJECT)
-    // 1. Target document: "appointments/{rejectingItem.id}"
-    // 2. Action: Either deleteDoc() OR updateDoc(ref, { status: 'Rejected' }) depending on requirements.
-    const handleRejectConfirm = () => {
-        if (!rejectingItem) return;
-        // Optimistic UI Update
-        setAppointments(prev => prev.filter(appt => appt.id !== rejectingItem.id));
-        setRejectingItem(null); 
+    const handleRejectClick = (appointmentId: string, clientName: string) => {
+        setConfirmDialog({
+            isOpen: true,
+            type: 'reject',
+            appointmentId,
+            clientName,
+        });
+    };
+
+    // [FIREBASE - BACKEND] UPDATE OPERATION (REJECT)
+    // Call API to reject appointment in Firestore
+    const handleRejectConfirm = async () => {
+        if (!confirmDialog.appointmentId) return;
+        
+        const success = await respondToAppointment(
+            confirmDialog.appointmentId,
+            'reject',
+            doctorId,
+            'Doctor declined the consultation request'
+        );
+        
+        if (success) {
+            // Update local state optimistically
+            setAppointments(prev => prev.map(appt => 
+                appt.id === confirmDialog.appointmentId ? { ...appt, approved: 'false' } : appt
+            ));
+        }
+        
+        setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null });
     };
 
     const handleOpenMainModal = () => {
@@ -144,9 +281,11 @@ export default function AppointmentsPage() {
         });
 
         bookedApps.forEach(app => {
-            const normTime = normalizeTime(app.time);
-            const statusLower = app.status.toLowerCase() as 'pending' | 'confirmed';
-            mergedMap.set(normTime, { time: app.time, status: statusLower });
+            const appTime = app.time || (app.timestamp ? new Date(app.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null);
+            if (!appTime) return; // Skip if no time available
+            const normTime = normalizeTime(appTime);
+            const statusLower = (app.approved === 'true' ? 'confirmed' : 'pending') as 'pending' | 'confirmed';
+            mergedMap.set(normTime, { time: appTime, status: statusLower });
         });
 
         const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
@@ -193,7 +332,7 @@ export default function AppointmentsPage() {
         setSelectedSlotData(null);
     };
 
-    const toggleRequest = (id: number) => {
+    const toggleRequest = (id: string) => {
         setExpandedRequestId(expandedRequestId === id ? null : id);
     };
 
@@ -234,7 +373,11 @@ export default function AppointmentsPage() {
                 {/* Calendar Section */}
                 <div className="flex-1 bg-white rounded-xl p-6 shadow-sm flex flex-col">
                     <Calendar
-                        onChange={setDate}
+                        onChange={(value) => {
+                            if (value instanceof Date) {
+                                setDate(value);
+                            }
+                        }}
                         value={date}
                         locale="en-US"
                         className="flex-1"
@@ -244,9 +387,12 @@ export default function AppointmentsPage() {
                         formatShortWeekday={(locale, date) => ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][date.getDay()]}
                         tileContent={({ date, view }) => {
                             if (view !== 'month') return null;
-                            const key = getDateKey(date);
-
-                            const hasAppointments = appointments.some(app => app.dateKey === key);
+                            
+                            const hasAppointments = appointments.some(app => {
+                                if (!app.timestamp) return false;
+                                const appDate = new Date(app.timestamp);
+                                return isSameDay(appDate, date);
+                            });
 
                             if (hasAppointments) {
                                 return (
@@ -269,20 +415,28 @@ export default function AppointmentsPage() {
                         </div>
                         
                         <div className="space-y-3 overflow-y-auto flex-1">
-                            {pendingRequests.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No pending requests</p>}
-                            {pendingRequests.map((req) => {
-                                const isExpanded = expandedRequestId === req.id;
+                            {loadingAppointments ? (
+                                <p className="text-sm text-gray-400 text-center py-4">Loading appointments...</p>
+                            ) : apiError ? (
+                                <p className="text-sm text-red-500 text-center py-4">Error: {apiError}</p>
+                            ) : pendingRequests.length === 0 ? (
+                                <p className="text-sm text-gray-400 text-center py-4">No pending requests</p>
+                            ) : (
+                                pendingRequests.map((req) => {
+                                    const isExpanded = expandedRequestId === req.id;
 
-                                const reqDateObj = new Date(req.dateKey); 
+                                    const reqTimestamp = req.timestamp || 1;
+                                    const reqDateObj = new Date(reqTimestamp);
                                 const reqDateStr = reqDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                const timeAgo = formatTimeAgo(reqTimestamp);
 
-                                return (
-                                    <div key={req.id} className={`rounded-lg transition-all duration-200 border ${isExpanded ? 'bg-gray-50 border-gray-100' : 'bg-gray-50 border-transparent hover:bg-white hover:shadow-sm'}`}>
+                                    return (
+                                        <div key={req.id} className={`rounded-lg transition-all duration-200 border ${isExpanded ? 'bg-gray-50 border-gray-100' : 'bg-gray-50 border-transparent hover:bg-white hover:shadow-sm'}`}>
                                         <div onClick={() => toggleRequest(req.id)} className="p-4 cursor-pointer flex justify-between items-start">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-0.5">
-                                                    <p className="font-bold text-gray-900 text-[15px]">{req.name}</p>
-                                                    {req.timestamp && <span className="text-xs text-gray-400 font-normal">{req.timestamp}</span>}
+                                                    <p className="font-bold text-gray-900 text-[15px]">{req.clientName}</p>
+                                                    {timeAgo && <span className="text-xs text-gray-400 font-normal">{timeAgo}</span>}
                                                 </div>
                                                 <p className="text-sm text-gray-500">{req.message || "Requesting appointment"}</p>
                                             </div>
@@ -295,25 +449,33 @@ export default function AppointmentsPage() {
 
                                         {isExpanded && (
                                             <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
-                                                <div className="mb-4">
+                                                <div className="mb-4 bg-white p-4 rounded-lg border border-gray-200">
+                                                    <p className="text-gray-500 text-sm mb-2">Patient Info</p>
+                                                    <p className="text-gray-900 font-medium text-sm">Email: {req.clientEmail || 'N/A'}</p>
+                                                    {req.bodyTemperature && <p className="text-gray-900 font-medium text-sm mt-1">Temperature: {req.bodyTemperature}°C</p>}
+                                                    {req.onsetSymptoms && <p className="text-gray-900 font-medium text-sm mt-1">Symptoms: {req.onsetSymptoms}</p>}
+                                                    {req.painLocation && <p className="text-gray-900 font-medium text-sm mt-1">Pain Location: {req.painLocation}</p>}
+                                                    {req.currentMedication && <p className="text-gray-900 font-medium text-sm mt-1">Current Medication: {req.currentMedication}</p>}
+                                                    <hr className="my-3" />
                                                     <p className="text-gray-500 text-sm">Date: <span className="text-gray-900 font-medium">{reqDateStr}</span></p>
-                                                    <p className="text-gray-500 text-sm">Time: <span className="text-gray-900 font-medium">{req.time}</span></p>
                                                 </div>
                                                 <div className="flex gap-3">
                                                     <button 
-                                                        onClick={() => handleAccept(req.id)}
-                                                        className="flex-1 bg-[#48A6A7] text-white py-2 rounded-md text-sm font-medium hover:bg-[#3F9192] transition-colors"
+                                                        onClick={() => handleAcceptClick(req.id, req.clientName)}
+                                                        disabled={loading}
+                                                        className="flex-1 bg-[#48A6A7] text-white py-2 rounded-md text-sm font-medium hover:bg-[#3F9192] disabled:bg-gray-300 transition-colors"
                                                     >
-                                                        Accept
+                                                        {loading ? 'Processing...' : 'Accept'}
                                                     </button>
 
-                                                    <button onClick={() => handleRejectClick(req)} className="flex-1 bg-gray-200 text-gray-600 py-2 rounded-md text-sm font-medium hover:bg-gray-300 transition-colors">Reject</button>
+                                                    <button onClick={() => handleRejectClick(req.id, req.clientName)} disabled={loading} className="flex-1 bg-gray-200 text-gray-600 py-2 rounded-md text-sm font-medium hover:bg-gray-300 disabled:bg-gray-200 transition-colors">Reject</button>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-                                );
-                            })}
+                                    );
+                                })
+                            )}
                         </div>
                     </div>
 
@@ -325,7 +487,8 @@ export default function AppointmentsPage() {
 
             {/* Table Section */}
             <div className="mt-8 bg-white rounded-xl p-6 shadow-sm min-h-[200px] flex flex-col">
-               {currentDayAppointments.length > 0 ? (
+               {currentDayAppointments && currentDayAppointments.length > 0 ? (
+                   <>
                    <table className="w-full text-left table-fixed">
                        <thead>
 
@@ -337,31 +500,35 @@ export default function AppointmentsPage() {
                            </tr>
                        </thead>
                        <tbody className="text-sm">
-                           {currentDayAppointments.map((appt) => (
-
+                           {currentDayAppointments && currentDayAppointments.length > 0 ? currentDayAppointments.map((appt) => {
+                               const appTime = appt.time || (appt.timestamp ? new Date(appt.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+                               return (
                                <tr key={appt.id} className="border-b border-gray-200 h-16 hover:bg-gray-50 transition-colors">
-                                   <td className="pl-2 font-medium text-gray-700">{appt.time}</td>
-                                   <td className="flex items-center space-x-3 h-16"><span className="w-8 h-8 bg-gray-200 rounded-full flex-shrink-0"></span><div className="flex flex-col"><span className="font-medium text-gray-900">{appt.name}</span></div></td>
-                                   <td><span className={`px-3 py-1 rounded-full text-xs font-medium ${appt.status === "Pending" ? "bg-orange-100 text-orange-600" : "bg-green-100 text-green-600"}`}>{appt.status}</span></td>
+                                   <td className="pl-2 font-medium text-gray-700">{appTime}</td>
+                                   <td className="flex items-center space-x-3 h-16"><span className="w-8 h-8 bg-gray-200 rounded-full flex-shrink-0"></span><div className="flex flex-col"><span className="font-medium text-gray-900">{appt.clientName || 'Unknown'}</span></div></td>
+                                   <td><span className={`px-3 py-1 rounded-full text-xs font-medium ${!appt.approved || appt.approved === 'false' ? "bg-orange-100 text-orange-600" : appt.approved === 'true' ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>{!appt.approved || appt.approved === 'false' ? 'Pending' : appt.approved === 'true' ? 'Approved' : 'Rejected'}</span></td>
                                    <td className="space-x-2">
-                                       {appt.status === "Pending" ? (
+                                       {!appt.approved || appt.approved === 'false' ? (
                                             <>
                                                 <button 
-                                                    onClick={() => handleAccept(appt.id)}
-                                                    className="px-4 py-1.5 bg-[#48A6A7] text-white rounded-lg text-xs hover:bg-[#3F9192] transition-colors"
+                                                    onClick={() => handleAcceptClick(appt.id, appt.clientName)}
+                                                    disabled={loading}
+                                                    className="px-4 py-1.5 bg-[#48A6A7] text-white rounded-lg text-xs hover:bg-[#3F9192] disabled:bg-gray-300 transition-colors"
                                                 >
-                                                    Accept
+                                                    {loading ? 'Processing...' : 'Accept'}
                                                 </button>
-                                                <button onClick={() => handleRejectClick(appt)} className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 transition-colors">Reject</button>
+                                                <button onClick={() => handleRejectClick(appt.id, appt.clientName)} disabled={loading} className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 disabled:bg-gray-100 transition-colors">Reject</button>
                                             </>
                                        ) : (
                                             <div className="h-8"></div> 
                                        )}
                                    </td>
                                </tr>
-                           ))}
+                               );
+                           }) : null}
                        </tbody>
                    </table>
+                   </>
                ) : (
                    <div className="flex-1 flex items-center justify-center flex-col text-gray-400 py-10">
                        <span className="text-4xl mb-3 opacity-50">📆</span>
@@ -463,15 +630,32 @@ export default function AppointmentsPage() {
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-red-500"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
                             </div>
                             <h3 className="text-xl font-bold text-gray-800 mb-2">Reject Request</h3>
-                            <p className="text-gray-600 text-center mb-6 leading-relaxed text-[15px]">This will notify <span className="font-bold text-gray-900">{rejectingItem.name}</span> that their appointment cannot be confirmed and advise them to reschedule. <br/><br/>Confirm rejection?</p>
+                            <p className="text-gray-600 text-center mb-6 leading-relaxed text-[15px]">This will notify <span className="font-bold text-gray-900">{rejectingItem.clientName}</span> that their appointment cannot be confirmed and advise them to reschedule. <br/><br/>Confirm rejection?</p>
                             <div className="flex space-x-3 w-full">
                                 <button onClick={() => { setRejectingItem(null); }} className="flex-1 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-semibold transition-colors">Cancel</button>
-                                <button onClick={handleRejectConfirm} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold shadow-sm transition-colors">Yes, Reject</button>
+                                <button onClick={() => handleRejectConfirm()} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-lg font-semibold shadow-sm transition-colors" disabled={loading}>
+                            {loading ? 'Processing...' : 'Yes, Reject'}
+                        </button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Confirmation Dialog */}
+            <ConfirmationDialog
+                isOpen={confirmDialog.isOpen}
+                title={confirmDialog.type === 'accept' ? 'Confirm Accept' : 'Confirm Decline'}
+                message={
+                    confirmDialog.type === 'accept'
+                        ? `Are you sure you want to accept ${confirmDialog.clientName}'s consultation request?`
+                        : `Are you sure you want to decline ${confirmDialog.clientName}'s consultation request?`
+                }
+                confirmText={confirmDialog.type === 'accept' ? 'Accept' : 'Decline'}
+                onConfirm={confirmDialog.type === 'accept' ? handleAcceptConfirm : handleRejectConfirm}
+                onCancel={() => setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null })}
+                isLoading={loading}
+            />
         </div>
     );
 }

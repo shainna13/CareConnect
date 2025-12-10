@@ -2,18 +2,20 @@
 
 import Link from "next/link";
 import { useUser } from "../src/lib/context/UserContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // Interfaces
-interface Appointment {
-  id: number;
-  time: string;
-  name: string;
-  status: 'Pending' | 'Confirmed';
+interface AppointmentData {
+  id: string;
+  clientName: string;
+  doctorId: string;
+  message?: string;
+  approved?: string | boolean;
+  timestamp: number;
 }
 
 interface PendingRequest {
-  id: number;
+  id: string;
   name: string;
   message: string;
   timestamp: string;
@@ -21,48 +23,129 @@ interface PendingRequest {
 
 export default function DashboardHome() {
   // [FIREBASE - BACKEND] USER CONTEXT
-  // Ensure 'accountData' pulls from the "users" collection in Firestore based on the authenticated UID.
-  // We need 'accountData.name' and 'accountData.isProfileComplete' (boolean) for the UI below.
   const { accountData } = useUser();
 
   // [FIREBASE - BACKEND] DASHBOARD STATISTICS
-  // 1. Fetch the total count of documents in the "patients" collection.
-  // 2. Fetch the total count of documents in the "appointments" collection (filter: where date is in current month).
-  // Current logic uses array.length; replace this with the actual count from Firestore.
-  const allPatients: any[] = []; 
-  const allAppointments: any[] = []; 
+  const [totalAppointments, setTotalAppointments] = useState(0);
+  const [activePatients, setActivePatients] = useState<Set<string>>(new Set());
 
   // [FIREBASE - BACKEND] TODAY'S APPOINTMENTS
-  // Query the "appointments" collection.
-  // Filter: where 'date' == TODAY (e.g., ISO string or Timestamp).
-  // Order: ascending by 'time'.
-  // This state should be populated by a useEffect or real-time snapshot.
-  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]); 
+  const [todayAppointments, setTodayAppointments] = useState<AppointmentData[]>([]);
+  const [loading, setLoading] = useState(true);
   
   // [FIREBASE - BACKEND] PENDING REQUESTS
-  // Query the "appointments" collection (or a separate "requests" collection).
-  // Filter: where 'status' == 'pending' (or 'request').
-  // Limit: 3-5 items for this preview card.
-  // Note: The data below is currently HARDCODED. Replace with data fetched from Firestore.
-  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([
-    { id: 1, name: "John Cruz", message: "New appointment", timestamp: "2 mins ago" },
-    { id: 2, name: "Paul Tomas", message: "New appointment", timestamp: "3 hrs ago" },
-    { id: 3, name: "Amy Dela", message: "Wants to reschedule", timestamp: "Yesterday" },
-  ]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+
+  // Fetch appointments data from the API
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        
+        // Get doctorId from localStorage
+        const doctorId = localStorage.getItem('doctorId') || "aQV2gT8LJCgnK41zgyJbqoWHKLm2";
+        
+        // Fetch all appointments for this doctor
+        const response = await fetch(`/api/appointments/fetch?doctorId=${doctorId}`);
+        const data = await response.json();
+        
+        if (data.appointments) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          const appointments = data.appointments.map((appt: any) => {
+            const timestamp = appt.data.timestamp || Date.now();
+            const appointmentDate = new Date(timestamp);
+            appointmentDate.setHours(0, 0, 0, 0);
+            
+            return {
+              id: appt.id,
+              clientName: appt.data.clientName,
+              doctorId: appt.data.doctorId,
+              message: appt.data.message,
+              approved: appt.data.approved,
+              timestamp: timestamp,
+              clientId: appt.data.clientId,
+            };
+          });
+          
+          // Filter today's appointments
+          const todayAppts = appointments.filter((appt: any) => {
+            const apptDate = new Date(appt.timestamp);
+            apptDate.setHours(0, 0, 0, 0);
+            return apptDate.getTime() === today.getTime();
+          }).sort((a: any, b: any) => a.timestamp - b.timestamp);
+          
+          // Filter pending requests
+          const pending = appointments
+            .filter((appt: any) => !appt.approved || appt.approved === 'false')
+            .slice(0, 5)
+            .map((appt: any) => ({
+              id: appt.id,
+              name: appt.clientName,
+              message: "New appointment request",
+              timestamp: formatTimeAgo(appt.timestamp),
+            }));
+          
+          // Calculate unique patients
+          const uniquePatients = new Set(appointments.map((appt: any) => appt.clientId));
+          
+          setTodayAppointments(todayAppts);
+          setPendingRequests(pending);
+          setTotalAppointments(appointments.length);
+          //setActivePatients(uniquePatients);
+        }
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (accountData?.id) {
+      fetchDashboardData();
+    }
+  }, [accountData?.id]);
+
+  // Helper function to format time
+  const formatTime = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  // Helper function to format time ago
+  const formatTimeAgo = (timestamp: number): string => {
+    const now = Date.now();
+    const diffMs = now - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return "1w ago";
+  };
 
   return (
     <div className="p-8 space-y-8 bg-[#CCE5E7] min-h-screen">
       
       {/* 1. Profile Card */}
       <div className="bg-white rounded-2xl p-6 shadow-sm flex items-center space-x-6">
-        <div className="w-20 h-20 bg-gray-200 rounded-lg flex-shrink-0"></div>
+        <div className="w-20 h-20 bg-gray-200 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden">
+          {accountData?.photo ? (
+            <img src={accountData.photo} alt="Profile" className="w-full h-full object-cover rounded-lg" />
+          ) : (
+            <span className="text-gray-400 text-sm">Photo</span>
+          )}
+        </div>
         <div>
             {/* [FIREBASE - BACKEND] Display User Name */}
             {/* Populated from accountData.name */}
           <h1 className="text-2xl font-bold !mb-0 text-[#006a71]">Dr. {accountData?.name || "User"}</h1>
-          <p className="text-orange-500 text-sm mb-3 font-medium">
-            Your profile is incomplete. Complete it now to appear in patient search.
-          </p>
           <Link href="/dashboard/profile" className="inline-block bg-[#006a71] hover:bg-[#005a61] text-white px-6 py-2 rounded-full text-sm font-semibold transition-colors">
             Set Profile
           </Link>
@@ -76,8 +159,7 @@ export default function DashboardHome() {
         <div className="bg-[#48A6A7] text-white rounded-2xl p-8 shadow-md flex flex-col justify-center h-40">
           <h2 className="text-xl font-medium">Total Appointments</h2>
           <p className="mt-2 text-2xl font-normal">
-            {/* [FIREBASE - BACKEND] Display Monthly Count */}
-            {allAppointments.length} this month
+            {totalAppointments} total
           </p>
         </div>
 
@@ -85,8 +167,7 @@ export default function DashboardHome() {
         <div className="bg-[#48A6A7] text-white rounded-2xl p-8 shadow-md flex flex-col justify-center h-40">
           <h2 className="text-xl font-medium">Active Patients</h2>
           <p className="mt-2 text-2xl font-normal">
-            {/* [FIREBASE - BACKEND] Display Total Patient Count */}
-            {allPatients.length} patients
+            {activePatients.size} patients
           </p>
         </div>
 
@@ -108,17 +189,17 @@ export default function DashboardHome() {
                 <tr className="text-gray-500 text-sm border-b border-gray-100">
                   <th className="pb-3 pl-2 w-[20%] font-semibold">Time</th>
                   <th className="pb-3 w-[50%] font-semibold">Patient</th>
-                  <th className="pb-3 w-[30%] font-semibold">Status</th>
+                  <th className="pb-3 w-[30%] font-semibold">Approval</th>
                 </tr>
               </thead>
               <tbody className="text-sm">
                 {todayAppointments.map((appt) => (
                   <tr key={appt.id} className="border-b border-gray-50 h-16 hover:bg-gray-50 transition-colors">
-                    <td className="pl-2 font-bold text-[#006a71]">{appt.time}</td>
-                    <td className="font-semibold text-gray-800">{appt.name}</td>
+                    <td className="pl-2 font-bold text-[#006a71]">{formatTime(appt.timestamp)}</td>
+                    <td className="font-semibold text-gray-800">{appt.clientName}</td>
                     <td>
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
-                        {appt.status}
+                        {!appt.approved || appt.approved === 'false' ? 'Pending' : appt.approved === 'true' ? 'Approved' : 'Rejected'}
                       </span>
                     </td>
                   </tr>

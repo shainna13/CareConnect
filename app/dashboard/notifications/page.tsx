@@ -1,78 +1,89 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { db } from "@/app/src/lib/firebase/client";
+import { collection, query, onSnapshot, orderBy, Timestamp } from "firebase/firestore";
+import { useUser } from "@/app/src/lib/context/UserContext";
+import { formatTime } from "@/app/src/lib/formatTime";
 
 export default function NotificationsPage() {
-  // [FIREBASE - BACKEND] FETCH NOTIFICATIONS (REAL-TIME LISTENER)
-  // 1. Use `useEffect` with `onSnapshot` to listen to the "notifications" collection.
-  // 2. Query: where('recipientId', '==', currentUser.uid).
-  // 3. Order: orderBy('timestamp', 'desc').
-  // 4. Map the snapshot docs to the state object below.
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      name: "Maria Lopez",
-      action: "'s appointment starts in 10 minutes.",
-      time: "8:50 AM", // Convert Firestore Timestamp to formatted string
-      isRead: false,
-    },
-    {
-      id: 2,
-      name: "John Cruz",
-      action: " sent an appointment request.",
-      time: "Nov 13",
-      isRead: false,
-    },
-    {
-      id: 3,
-      name: "Ana Reyes",
-      action: " sent a new message.",
-      time: "Nov 12",
-      isRead: true,
-    },
-    {
-      id: 4,
-      name: "Carl Ramos",
-      action: " confirmed medicine taken at 8:00 AM.",
-      time: "Nov 10",
-      isRead: true,
-    },
-    {
-      id: 5,
-      name: "Dr. Sarah Watson",
-      action: " updated your prescription details.",
-      time: "Nov 09",
-      isRead: true,
-    },
-  ]);
+  const { currentUser } = useUser();
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // [FIREBASE - BACKEND] UNREAD COUNT
-  // If using `onSnapshot` above, this calculation remains valid on the frontend.
-  // Alternatively, fetch a separate count from Firestore using `count()` aggregation if the list is paginated.
+  // [FIREBASE - BACKEND] FETCH NOTIFICATIONS (REAL-TIME LISTENER)
+  // Listen to the notifications subcollection in accounts/{userId}/notifications
+  useEffect(() => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    // Create query to fetch notifications for current user
+    const notificationsRef = collection(db, "accounts", currentUser.uid, "notifications");
+    const q = query(notificationsRef, orderBy("timestamp", "desc"));
+
+    // Real-time listener
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const loadedNotifications = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          
+          // Format timestamp
+          let formattedTime = "";
+          if (data.timestamp) {
+            const timestamp = data.timestamp instanceof Timestamp 
+              ? data.timestamp.toDate() 
+              : new Date(data.timestamp);
+            formattedTime = formatTime(timestamp);
+          }
+
+          return {
+            id: doc.id,
+            name: data.name || data.sender || "Unknown",
+            message: data.message || "You have a new notification",
+            email: data.email || "",
+            time: formattedTime,
+            isRead: data.isRead || false,
+            type: data.type || "notification",
+            timestamp: data.timestamp,
+          };
+        });
+
+        setNotifications(loadedNotifications);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching notifications:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Calculate unread count
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   // [FIREBASE - BACKEND] BATCH UPDATE (MARK ALL READ)
-  // 1. Query all documents for this user where isRead == false.
-  // 2. Initialize a Firestore WriteBatch.
-  // 3. Loop through documents and add update(ref, { isRead: true }) to the batch.
-  // 4. await batch.commit().
-  const markAllAsRead = () => {
-    // Optimistic update for UI (keep this)
+  const markAllAsRead = async () => {
+    // Optimistic update for UI
     setNotifications(notifications.map((n) => ({ ...n, isRead: true })));
     
-    // TODO: Add Firebase logic here
+    // TODO: Add Firebase batch update logic here
   };
 
   // [FIREBASE - BACKEND] SINGLE DOCUMENT UPDATE
-  // 1. Create a reference: doc(db, "notifications", id).
-  // 2. await updateDoc(ref, { isRead: true }).
-  const markAsRead = (id: number) => {
-    // Optimistic update for UI (keep this)
+  const markAsRead = async (id: string) => {
+    // Optimistic update for UI
     setNotifications(
       notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
 
-    // TODO: Add Firebase logic here
+    // TODO: Add Firebase updateDoc logic here
   };
 
   return (
@@ -109,6 +120,8 @@ export default function NotificationsPage() {
         <div className="overflow-y-auto flex-1">
           {notifications.length === 0 ? (
             <div className="p-10 text-gray-500 text-center">No notifications yet.</div>
+          ) : loading ? (
+            <div className="p-10 text-gray-500 text-center">Loading notifications...</div>
           ) : (
             <div>
               {/* [FIREBASE - BACKEND] RENDER LIST */}
@@ -131,10 +144,12 @@ export default function NotificationsPage() {
 
                   {/* Right Column: Message */}
                   <div className="flex-1">
-                    <p className="text-base text-[#006A71]">
-                      <span className="font-bold">{notification.name}</span>
-                      <span className="font-medium text-gray-600">{notification.action}</span>
+                    <p className="text-base text-[#006A71] font-medium">
+                      {notification.message}
                     </p>
+                    {notification.email && (
+                      <p className="text-sm text-gray-500 mt-1">{notification.email}</p>
+                    )}
                   </div>
 
                   {/* Unread Indicator Dot (Orange) */}

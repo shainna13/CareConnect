@@ -8,21 +8,23 @@ export default function PrescriptionFormModal({ isOpen, onClose, onSubmit, initi
   // Ensure the backend/Firestore validation rules allow these specific fields (string types).
   const defaultMedicine = { 
     id: Date.now(), 
-    name: "", 
+    medicineName: "", 
     type: "Tablet", 
-    dose: "", 
-    freq: "Once daily", 
+    dosage: "", 
+    frequency: "Once daily", 
     time: "", 
     duration: "3 days", 
-    notes: "" 
+    remarks: "" 
   };
 
   const [medicines, setMedicines] = useState([defaultMedicine]);
 
   // Set patient name if passed (optional, for convenience)
   useEffect(() => {
-    if (initialPatientName) setPatientName(initialPatientName);
-  }, [initialPatientName]);
+    if (initialPatientName) {
+      setPatientName(initialPatientName);
+    }
+  }, [initialPatientName, isOpen]);
 
   if (!isOpen) return null;
 
@@ -89,14 +91,10 @@ export default function PrescriptionFormModal({ isOpen, onClose, onSubmit, initi
              <h3 className="text-[#006A71] font-semibold mb-2">Patient Information</h3>
              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                {/* [FIREBASE - BACKEND] Input: Patient Name */}
-                <input 
-                  type="text" 
-                  value={patientName} 
-                  onChange={(e) => setPatientName(e.target.value)} 
-                  className="w-full p-2 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#006A71]" 
-                  placeholder="Patient Name" 
-                />
+                {/* Patient Name - Read Only Display */}
+                <div className="w-full p-2 bg-gray-100 border border-gray-300 rounded text-gray-700 font-medium">
+                  {patientName || "No patient selected"}
+                </div>
              </div>
           </div>
 
@@ -122,8 +120,8 @@ export default function PrescriptionFormModal({ isOpen, onClose, onSubmit, initi
                   <label className="block text-sm font-medium text-gray-600 mb-1">Medicine Name</label>
                   <input 
                     type="text" 
-                    value={med.name} 
-                    onChange={(e) => updateMedicine(med.id, "name", e.target.value)} 
+                    value={med.medicineName} 
+                    onChange={(e) => updateMedicine(med.id, "medicineName", e.target.value)} 
                     placeholder="e.g., Paracetamol" 
                     className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#006A71]" 
                   />
@@ -152,8 +150,8 @@ export default function PrescriptionFormModal({ isOpen, onClose, onSubmit, initi
                     <label className="block text-sm font-medium text-gray-600 mb-1">Dose</label>
                     <input 
                       type="text" 
-                      value={med.dose} 
-                      onChange={(e) => updateMedicine(med.id, "dose", e.target.value)} 
+                      value={med.dosage} 
+                      onChange={(e) => updateMedicine(med.id, "dosage", e.target.value)} 
                       placeholder="e.g., 500mg" 
                       className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#006A71]" 
                     />
@@ -164,8 +162,8 @@ export default function PrescriptionFormModal({ isOpen, onClose, onSubmit, initi
                 <div>
                    <label className="block text-sm font-medium text-gray-600 mb-1">Frequency</label>
                    <select 
-                     value={med.freq} 
-                     onChange={(e) => updateMedicine(med.id, "freq", e.target.value)} 
+                     value={med.frequency} 
+                     onChange={(e) => updateMedicine(med.id, "frequency", e.target.value)} 
                      className="w-full p-2 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#006A71]"
                    >
                      <option>Once daily</option>
@@ -222,8 +220,8 @@ export default function PrescriptionFormModal({ isOpen, onClose, onSubmit, initi
                   <label className="block text-sm font-medium text-gray-600 mb-1">Remarks (Optional)</label>
                   <input 
                     type="text" 
-                    value={med.notes} 
-                    onChange={(e) => updateMedicine(med.id, "notes", e.target.value)} 
+                    value={med.remarks} 
+                    onChange={(e) => updateMedicine(med.id, "remarks", e.target.value)} 
                     placeholder="e.g., Take with water" 
                     className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#006A71]" 
                   />
