@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useUser } from "../src/lib/context/UserContext";
+import { useAppointments } from "../src/lib/hooks/useAppointments";
 import { useState, useEffect } from "react";
 
 // Interfaces
@@ -24,6 +25,7 @@ interface PendingRequest {
 export default function DashboardHome() {
   // [FIREBASE - BACKEND] USER CONTEXT
   const { accountData } = useUser();
+  const { fetchAppointments } = useAppointments();
 
   // [FIREBASE - BACKEND] DASHBOARD STATISTICS
   const [totalAppointments, setTotalAppointments] = useState(0);
@@ -36,36 +38,39 @@ export default function DashboardHome() {
   // [FIREBASE - BACKEND] PENDING REQUESTS
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
 
-  // Fetch appointments data from the API
+  // Fetch appointments data directly from Firebase
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
         
-        // Get doctorId from localStorage
-        const doctorId = localStorage.getItem('doctorId') || "aQV2gT8LJCgnK41zgyJbqoWHKLm2";
+        // Get doctorId from accountData or localStorage
+        const doctorId = accountData?.id || localStorage.getItem('doctorId') || "null";
         
-        // Fetch all appointments for this doctor
-        const response = await fetch(`/api/appointments/fetch?doctorId=${doctorId}`);
-        const data = await response.json();
+        // Fetch all appointments for this doctor directly from Firebase
+        const result = await fetchAppointments({ doctorId });
         
-        if (data.appointments) {
+        if (result) {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           
-          const appointments = data.appointments.map((appt: any) => {
-            const timestamp = appt.data.timestamp || Date.now();
-            const appointmentDate = new Date(timestamp);
-            appointmentDate.setHours(0, 0, 0, 0);
+          const appointments = result.map((appt: any) => {
+            const appointmentData = appt.data;
+            let timestamp = appointmentData.timestamp;
+            if (timestamp && typeof timestamp === 'object' && 'toMillis' in timestamp) {
+              timestamp = (timestamp as any).toMillis();
+            } else if (!timestamp) {
+              timestamp = Date.now();
+            }
             
             return {
               id: appt.id,
-              clientName: appt.data.clientName,
-              doctorId: appt.data.doctorId,
-              message: appt.data.message,
-              approved: appt.data.approved,
+              clientName: appointmentData.clientName,
+              doctorId: appointmentData.doctorId,
+              message: appointmentData.message,
+              approved: appointmentData.approved,
               timestamp: timestamp,
-              clientId: appt.data.clientId,
+              clientId: appointmentData.clientId,
             };
           });
           
@@ -93,7 +98,7 @@ export default function DashboardHome() {
           setTodayAppointments(todayAppts);
           setPendingRequests(pending);
           setTotalAppointments(appointments.length);
-          //setActivePatients(uniquePatients);
+          setActivePatients(uniquePatients);
         }
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -105,7 +110,7 @@ export default function DashboardHome() {
     if (accountData?.id) {
       fetchDashboardData();
     }
-  }, [accountData?.id]);
+  }, [accountData?.id, fetchAppointments]);
 
   // Helper function to format time
   const formatTime = (timestamp: number): string => {

@@ -2,6 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "@/app/src/lib/context/UserContext";
+import { db } from "@/app/src/lib/firebase/client";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+} from "firebase/firestore";
 
 // Interface for type safety
 interface AppointmentRecord {
@@ -25,7 +33,7 @@ interface Patient {
     id: string; // clientId
     name: string;
     email: string;
-    phone?: string;
+    mobileNo?: string;
     approved: string | boolean; // 'true' for approved
     firstApprovedDate?: number;
     lastAppointmentDate?: number;
@@ -43,7 +51,7 @@ export default function PatientsPage() {
     const [loading, setLoading] = useState(true);
     const [doctorId, setDoctorId] = useState<string>("");
 
-    // --- FETCH PATIENTS FROM FIREBASE ---
+    // --- FETCH PATIENTS FROM FIREBASE DIRECTLY ---
     useEffect(() => {
         const getDoctorId = () => {
             if (accountData?.id) {
@@ -64,50 +72,80 @@ export default function PatientsPage() {
                     return;
                 }
 
-                // Fetch all appointments for this doctor
-                const response = await fetch(`/api/appointments/fetch?doctorId=${id}`);
-                const data = await response.json();
+                // Direct Firestore query - fetch all accounts and their notes (appointments)
+                const accountsRef = collection(db, "accounts");
+                const accountsSnapshot = await getDocs(accountsRef);
 
-                if (data.appointments && data.appointments.length > 0) {
-                    // Group appointments by patient
-                    const patientMap = new Map<string, Patient>();
+                const patientMap = new Map<string, Patient>();
 
-                    data.appointments.forEach((appt: any) => {
-                        const appointmentData = appt.data;
-                        const clientId = appointmentData.clientId;
+                // Iterate through each account to get their notes
+                for (const accountDoc of accountsSnapshot.docs) {
+                    const notesRef = collection(accountDoc.ref, "notes");
+                    const notesSnapshot = await getDocs(notesRef);
+
+                    const accountNotes = notesSnapshot.docs
+                        .map((doc) => {
+                            const data = doc.data() as any;
+                            const timestamp = data.timestamp?.toMillis?.() || data.timestamp || Date.now();
+                            return { id: doc.id, ...data, timestamp };
+                        })
+                        .filter((note) => note.assignedTo === id); // Filter by assigned doctor
+
+                    // Group by patient (clientId)
+                    accountNotes.forEach((note) => {
+                        const clientId = note.clientId;
 
                         if (!patientMap.has(clientId)) {
                             patientMap.set(clientId, {
                                 id: clientId,
-                                name: appointmentData.clientName,
-                                email: appointmentData.clientEmail,
-                                phone: appointmentData.phone || '',
-                                approved: appointmentData.approved,
-                                firstApprovedDate: appointmentData.approved === 'true' ? appointmentData.timestamp : undefined,
-                                lastAppointmentDate: appointmentData.timestamp,
+                                name: note.clientName,
+                                email: note.clientEmail,
+                                mobileNo: note.clientMobileNo || '',
+                                approved: 'false', // Default to false, will be set if any note is approved
+                                firstApprovedDate: undefined,
+                                lastAppointmentDate: note.timestamp,
                                 appointments: [],
                             });
                         }
 
                         const patient = patientMap.get(clientId)!;
                         patient.appointments.push({
-                            id: appt.id,
-                            ...appointmentData,
+                            id: note.id,
+                            clientId: note.clientId,
+                            clientName: note.clientName,
+                            clientEmail: note.clientEmail,
+                            bodyTemperature: note.bodyTemperature,
+                            onsetSymptoms: note.onsetSymptoms,
+                            painLocation: note.painLocation,
+                            painIntensity: note.painIntensity,
+                            currentMedication: note.currentMedication,
+                            medicationPrescribe: note.medicationPrescribe,
+                            patientFeels: note.patientFeels,
+                            approved: note.approved,
+                            timestamp: note.timestamp,
+                            message: note.message,
                         });
 
                         // Update last appointment date
-                        if (!patient.lastAppointmentDate || appointmentData.timestamp > patient.lastAppointmentDate) {
-                            patient.lastAppointmentDate = appointmentData.timestamp;
+                        if (!patient.lastAppointmentDate || note.timestamp > patient.lastAppointmentDate) {
+                            patient.lastAppointmentDate = note.timestamp;
+                        }
+
+                        // Check if this note is approved - if so, mark patient as approved
+                        if (note.approved === 'true' && patient.approved !== 'true') {
+                            patient.approved = 'true';
+                            if (!patient.firstApprovedDate) {
+                                patient.firstApprovedDate = note.timestamp;
+                            }
                         }
                     });
-
-                    // Convert to array and filter - only show approved patients
-                    const approvedPatients = Array.from(patientMap.values())
-                        .filter(patient => patient.approved === 'true');
-
-                    setPatients(approvedPatients);
                 }
 
+                // Convert to array and filter - only show approved patients
+                const approvedPatients = Array.from(patientMap.values())
+                    .filter(patient => patient.approved === 'true');
+
+                setPatients(approvedPatients);
                 setLoading(false);
             } catch (error) {
                 console.error("Error fetching patients:", error);
@@ -273,7 +311,7 @@ export default function PatientsPage() {
                                         </div>
                                         <div className="flex items-center gap-3 text-gray-700">
                                             <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">📞</div>
-                                            {selectedPatient.phone || 'Not provided'}
+                                            {selectedPatient.mobileNo || 'Not provided'}
                                         </div>
                                     </div>
                                 </div>

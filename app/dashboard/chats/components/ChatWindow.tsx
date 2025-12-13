@@ -112,30 +112,64 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
       q,
       async (snapshot) => {
         const loadedMessages: any[] = [];
-        
-        for (const docSnap of snapshot.docs) {
+        const senderNameCache: Record<string, string> = {};
+        const prescriptionCache: Record<string, any> = {};
+
+        // Don't pre-populate with fallback names - fetch actual names from accounts collection
+        // This ensures we always show the real names, not generic fallbacks
+
+        // Collect all unique sender IDs and prescription IDs that need fetching
+        const sendersToFetch = new Set<string>();
+        const prescriptionsToFetch = new Set<string>();
+
+        snapshot.docs.forEach((docSnap) => {
           const data = docSnap.data();
-          let senderName = data.senderName || "Unknown";
-          
-          // Determine expected name based on sender
-          const isDoctor = data.sender === chat.doctor;
-          const expectedName = isDoctor ? chat.doctorName : chat.clientName;
-          
-          // Use chat context name if available, otherwise fetch from account
-          if (expectedName && expectedName !== "Unknown") {
-            senderName = expectedName;
-          } else if (senderName === "Unknown" && data.sender) {
+          if (data.sender && !senderNameCache[data.sender]) {
+            sendersToFetch.add(data.sender);
+          }
+          if (data.type === "prescription_ref" && data.prescriptionId && data.patientId) {
+            prescriptionsToFetch.add(`${data.patientId}|${data.prescriptionId}`);
+          }
+        });
+
+        // Fetch all sender names in parallel
+        if (sendersToFetch.size > 0) {
+          const senderPromises = Array.from(sendersToFetch).map(async (senderId) => {
             try {
-              const senderDoc = await getDoc(doc(db, "accounts", data.sender));
+              const senderDoc = await getDoc(doc(db, "accounts", senderId));
               if (senderDoc.exists()) {
-                senderName = senderDoc.data()?.name || "Unknown";
+                senderNameCache[senderId] = senderDoc.data()?.name || "Unknown";
               }
             } catch (error) {
               console.error("Error fetching sender name:", error);
             }
-          }
+          });
+          await Promise.all(senderPromises);
+        }
 
-          // Handle prescription_ref type (lightweight reference)
+        // Fetch all prescriptions in parallel
+        if (prescriptionsToFetch.size > 0) {
+          const prescriptionPromises = Array.from(prescriptionsToFetch).map(async (key) => {
+            const [patientId, prescriptionId] = key.split("|");
+            try {
+              const presDoc = await getDoc(
+                doc(db, "accounts", patientId, "prescriptions", prescriptionId)
+              );
+              if (presDoc.exists()) {
+                prescriptionCache[key] = presDoc.data();
+              }
+            } catch (error) {
+              console.error("Error loading prescription:", error);
+            }
+          });
+          await Promise.all(prescriptionPromises);
+        }
+
+        // Now process messages using the cached data (no more async calls)
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const senderName = senderNameCache[data.sender] || "Unknown";
+
           let messageData: any = {
             id: docSnap.id,
             sender: data.sender,
@@ -147,23 +181,15 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
             status: data.status,
           };
 
-          // If it's a prescription_ref, load the full prescription data from patient's collection
-          if (data.type === "prescription_ref" && data.prescriptionId) {
-            try {
-              // Get patientId from the chat data (prescription is stored in patient's account)
-              const patientIdForPrescription = data.patientId;
-              const presDoc = await getDoc(
-                doc(db, "accounts", patientIdForPrescription, "prescriptions", data.prescriptionId)
-              );
-              if (presDoc.exists()) {
-                const presData = presDoc.data();
-                messageData.prescriptionData = presData;
-                messageData.prescriptionId = data.prescriptionId;
-                // Update status from prescription document
-                messageData.status = presData.status || data.status;
-              }
-            } catch (error) {
-              console.error("Error loading prescription:", error);
+          // Use cached prescription data
+          if (data.type === "prescription_ref" && data.prescriptionId && data.patientId) {
+            const cacheKey = `${data.patientId}|${data.prescriptionId}`;
+            const presData = prescriptionCache[cacheKey];
+            if (presData) {
+              messageData.prescriptionData = presData;
+              messageData.prescriptionId = data.prescriptionId;
+              messageData.status = presData.status || data.status;
+            } else {
               messageData.prescriptionData = null;
             }
           } else {
@@ -173,9 +199,10 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
 
           messageData.evaluationData = data.evaluationData;
           messageData.medicineName = data.medicineName;
-          
+
           loadedMessages.push(messageData);
-        }
+        });
+
         setMessages(loadedMessages);
         setLoading(false);
       },

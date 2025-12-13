@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Calendar from "react-calendar";
 import { useAppointments } from "@/app/src/lib/hooks/useAppointments";
+import { useSchedules } from "@/app/src/lib/hooks/useSchedules";
 import { useUser } from "@/app/src/lib/context/UserContext";
 import { ConfirmationDialog } from "@/app/src/components/ConfirmationDialog";
 
@@ -10,6 +11,12 @@ import { ConfirmationDialog } from "@/app/src/components/ConfirmationDialog";
 interface TimeSlot {
     time: string;
     status: 'available' | 'pending' | 'confirmed';
+}
+
+// Schedule TimeSlot - used for available hours management
+interface ScheduleSlot {
+    time: string;
+    status: 'available' | 'booked';
 }
 
 // [FIREBASE - BACKEND] DATA MODEL
@@ -63,6 +70,7 @@ const formatTimeAgo = (timestamp: number): string => {
 
 export default function AppointmentsPage() {
     const { fetchAppointments, respondToAppointment, loading, error: apiError } = useAppointments();
+    const { saveScheduleForDate, fetchScheduleForDate, bookTimeSlot, applyScheduleToMultipleDates } = useSchedules();
     const { accountData } = useUser(); // Get doctorId from UserContext
     const [date, setDate] = useState<Date>(new Date());
     const [doctorId, setDoctorId] = useState<string>("");
@@ -79,11 +87,22 @@ export default function AppointmentsPage() {
 
     const currentDayAppointments = useMemo(() => {
         const filtered = appointments.filter(appt => {
-            if (!appt.timestamp) {
-                return false;
+            // Show appointment if booked date matches (for approved appointments)
+            if (appt.dateKey && appt.approved === 'true') {
+                if (appt.dateKey === getDateKey(date)) {
+                    return true;
+                }
             }
-            const appointmentDate = new Date(appt.timestamp);
-            return isSameDay(appointmentDate, date);
+            
+            // Show appointment if submission date matches (for all appointments)
+            if (appt.timestamp) {
+                const appointmentDate = new Date(appt.timestamp);
+                if (isSameDay(appointmentDate, date)) {
+                    return true;
+                }
+            }
+            
+            return false;
         });
         return filtered;
     }, [appointments, date]);
@@ -109,11 +128,16 @@ export default function AppointmentsPage() {
             const result = await fetchAppointments({ doctorId });
             
             if (result) {
-                // Transform API response to match local interface
+                // Direct transformation - API returns same structure now
                 const transformedAppointments = result.map((appt) => {
                   const appointmentData = appt.data;
-                  // Timestamp from API is already a number in milliseconds
-                  const timestamp = appointmentData.timestamp || Date.now();
+                  // Handle both Firestore Timestamp and number
+                  let timestamp = appointmentData.timestamp;
+                  if (timestamp && typeof timestamp === 'object' && 'toMillis' in timestamp) {
+                    timestamp = (timestamp as any).toMillis();
+                  } else if (!timestamp) {
+                    timestamp = Date.now();
+                  }
                   
                   return {
                     id: appt.id,
@@ -121,7 +145,8 @@ export default function AppointmentsPage() {
                     doctorId: appointmentData.doctorId,
                     clientId: appointmentData.clientId,
                     clientEmail: appointmentData.clientEmail,
-                    dateKey: getDateKey(new Date(timestamp)),
+                    dateKey: appointmentData.dateKey || appointmentData.selectedDateKey || getDateKey(new Date(timestamp)),
+                    time: appointmentData.time || appointmentData.selectedTimeSlot,
                     approved: appointmentData.approved,
                     message: appointmentData.message,
                     timestamp: timestamp,
@@ -146,29 +171,52 @@ export default function AppointmentsPage() {
 
     // --- SCHEDULE STATES ---
     // [FIREBASE - BACKEND] READ OPERATION (AVAILABILITY)
-    // 1. Fetch from a "schedules" or "availability" collection.
-    // 2. Structure: Document ID = 'dateKey', Fields = array of available times.
-    // This controls the "Available" slots shown in the Modal.
-    const [allSchedules, setAllSchedules] = useState<Record<string, TimeSlot[]>>({
-        [getDateKey(new Date(2025, 11, 20))]: [
-            { time: "08:30 AM", status: 'available' },
-            { time: "01:00 PM", status: 'available' },
-            { time: "02:00 PM", status: 'available' },
-        ]
-    });
+    // Fetch schedules from Firestore collection: schedules/{doctorId}_{dateKey}
+    // Structure: Document stores dateKey and slots array with status (available/booked)
+    const [allSchedules, setAllSchedules] = useState<Record<string, ScheduleSlot[]>>({});
+    const [loadingSchedule, setLoadingSchedule] = useState(false);
+
+    // Load schedules when doctor ID changes
+    useEffect(() => {
+        const loadSchedules = async () => {
+            if (!doctorId) return;
+            
+            try {
+                setLoadingSchedule(true);
+                const dateKey = getDateKey(date);
+                const slots = await fetchScheduleForDate(doctorId, dateKey);
+                
+                setAllSchedules(prev => ({
+                    ...prev,
+                    [dateKey]: slots as ScheduleSlot[]
+                }));
+            } catch (err) {
+                console.error('Error loading schedule:', err);
+            } finally {
+                setLoadingSchedule(false);
+            }
+        };
+
+        loadSchedules();
+    }, [doctorId, date, fetchScheduleForDate]);
+
     // [FIREBASE - BACKEND] DEFAULT SETTINGS
     // Fetch user preferences for default daily slots (if 'Apply every day' logic is stored on server).
-    const [defaultSchedule, setDefaultSchedule] = useState<TimeSlot[]>([]);
+    const [defaultSchedule, setDefaultSchedule] = useState<ScheduleSlot[]>([]);
 
     // --- UI STATES ---
     const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
     const [isMainModalOpen, setIsMainModalOpen] = useState(false);
     const [isAddPopupOpen, setIsAddPopupOpen] = useState(false);
     const [newTimeInput, setNewTimeInput] = useState("");
-    const [selectedSlotData, setSelectedSlotData] = useState<{ slot: TimeSlot, index: number } | null>(null);
-    const [tempSlots, setTempSlots] = useState<TimeSlot[]>([]);
+    const [selectedSlotData, setSelectedSlotData] = useState<{ slot: ScheduleSlot, index: number } | null>(null);
+    const [tempSlots, setTempSlots] = useState<ScheduleSlot[]>([]);
     const [isApplyAllActive, setIsApplyAllActive] = useState(false);
     const [rejectingItem, setRejectingItem] = useState<{ id: string, clientName: string } | null>(null);
+    
+    // --- SELECTED SCHEDULE SLOT FOR APPOINTMENT ---
+    const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+    const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
     
     // --- CONFIRMATION DIALOG STATES ---
     const [confirmDialog, setConfirmDialog] = useState<{
@@ -176,12 +224,20 @@ export default function AppointmentsPage() {
         type: 'accept' | 'reject' | null;
         appointmentId: string | null;
         clientName: string | null;
+        clientId: string | null;
+        appointmentTime?: string;
+        appointmentDate?: string;
     }>({
         isOpen: false,
         type: null,
         appointmentId: null,
         clientName: null,
+        clientId: null,
     });
+
+    // --- CALENDAR HOVER TOOLTIP ---
+    const [hoveredDateKey, setHoveredDateKey] = useState<string | null>(null);
+    const [hoveredDateSchedule, setHoveredDateSchedule] = useState<ScheduleSlot[] | null>(null);
 
     // --- FORMATTERS ---
     const formattedDateHeader = date.toLocaleDateString('en-US', {
@@ -205,57 +261,105 @@ export default function AppointmentsPage() {
         return `${hString}:${minStr} ${ampm}`;
     };
 
+    // --- CALENDAR HOVER HANDLERS ---
+    const handleDateHover = async (hoverDate: Date) => {
+        if (!doctorId) return;
+        
+        const dateKey = getDateKey(hoverDate);
+        setHoveredDateKey(dateKey);
+        
+        try {
+            const schedule = await fetchScheduleForDate(doctorId, dateKey);
+            setHoveredDateSchedule(schedule);
+        } catch (err) {
+            console.error('Error fetching schedule for hover:', err);
+            setHoveredDateSchedule(null);
+        }
+    };
+
+    const handleDateLeaveHover = () => {
+        setHoveredDateKey(null);
+        setHoveredDateSchedule(null);
+    };
+
     // --- HANDLERS ---
     
     // [FIREBASE - BACKEND] UPDATE OPERATION (ACCEPT)
     // Show confirmation dialog before accepting
-    const handleAcceptClick = (appointmentId: string, clientName: string) => {
+    const handleAcceptClick = (appointmentId: string, clientName: string, clientId: string, appointmentTime?: string, appointmentDate?: string) => {
         setConfirmDialog({
             isOpen: true,
             type: 'accept',
             appointmentId,
             clientName,
+            clientId,
+            appointmentTime,
+            appointmentDate,
         });
     };
 
     const handleAcceptConfirm = async () => {
-        if (!confirmDialog.appointmentId) return;
+        if (!confirmDialog.appointmentId || !confirmDialog.clientId) return;
         
         const success = await respondToAppointment(
             confirmDialog.appointmentId,
             'accept',
-            doctorId
+            confirmDialog.clientId,
+            undefined,
+            selectedDateKey || undefined,
+            selectedTimeSlot || undefined
         );
         
         if (success) {
-            // Update local state optimistically
-            setAppointments(prev => prev.map(appt => 
-                appt.id === confirmDialog.appointmentId ? { ...appt, approved: 'true' } : appt
-            ));
+            // Book the time slot using the doctor's selected date and time from the schedule modal
+            if (selectedDateKey && selectedTimeSlot && doctorId) {
+                try {
+                    await bookTimeSlot(doctorId, selectedDateKey, selectedTimeSlot);
+                    // Clear the selected slot after booking
+                    setSelectedDateKey(null);
+                    setSelectedTimeSlot(null);
+                } catch (err) {
+                    console.error('Error booking time slot:', err);
+                }
+            }
+            
+            // Update local state optimistically with the doctor's selected date and time
+            setAppointments(prev => prev.map(appt => {
+                if (appt.id === confirmDialog.appointmentId) {
+                    return {
+                        ...appt,
+                        approved: 'true',
+                        dateKey: selectedDateKey || appt.dateKey,
+                        time: selectedTimeSlot || appt.time
+                    };
+                }
+                return appt;
+            }));
             if(expandedRequestId === confirmDialog.appointmentId) setExpandedRequestId(null);
         }
         
-        setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null });
+        setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null, clientId: null });
     };
 
-    const handleRejectClick = (appointmentId: string, clientName: string) => {
+    const handleRejectClick = (appointmentId: string, clientName: string, clientId: string) => {
         setConfirmDialog({
             isOpen: true,
             type: 'reject',
             appointmentId,
             clientName,
+            clientId,
         });
     };
 
     // [FIREBASE - BACKEND] UPDATE OPERATION (REJECT)
     // Call API to reject appointment in Firestore
     const handleRejectConfirm = async () => {
-        if (!confirmDialog.appointmentId) return;
+        if (!confirmDialog.appointmentId || !confirmDialog.clientId) return;
         
         const success = await respondToAppointment(
             confirmDialog.appointmentId,
             'reject',
-            doctorId,
+            confirmDialog.clientId,
             'Doctor declined the consultation request'
         );
         
@@ -266,51 +370,64 @@ export default function AppointmentsPage() {
             ));
         }
         
-        setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null });
+        setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null, clientId: null });
     };
 
     const handleOpenMainModal = () => {
         const key = getDateKey(date);
         const availableSlots = allSchedules[key] !== undefined ? allSchedules[key] : defaultSchedule;
-        const bookedApps = currentDayAppointments; 
-        const mergedMap = new Map<string, TimeSlot>();
-
-        availableSlots.forEach(slot => {
-            const normTime = normalizeTime(slot.time);
-            mergedMap.set(normTime, { time: slot.time, status: 'available' });
-        });
-
-        bookedApps.forEach(app => {
-            const appTime = app.time || (app.timestamp ? new Date(app.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null);
-            if (!appTime) return; // Skip if no time available
-            const normTime = normalizeTime(appTime);
-            const statusLower = (app.approved === 'true' ? 'confirmed' : 'pending') as 'pending' | 'confirmed';
-            mergedMap.set(normTime, { time: appTime, status: statusLower });
-        });
-
-        const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
-            new Date('1970/01/01 ' + a.time).getTime() - new Date('1970/01/01 ' + b.time).getTime()
-        );
         
-        setTempSlots(mergedList); 
+        // For schedule management, we only show schedule slots (not appointments)
+        // Appointments are managed separately in the appointments page
+        setTempSlots(availableSlots.length > 0 ? availableSlots : defaultSchedule);
         setIsApplyAllActive(false); 
         setIsMainModalOpen(true);
     };
 
     // [FIREBASE - BACKEND] WRITE OPERATION (SAVE SCHEDULE)
     // This saves the "Available" slots for a specific day (or all days).
-    // 1. If isApplyAllActive: Update user profile/settings default schedule.
-    // 2. Else: Write to "schedules" collection -> Document ID: {dateKey} -> Field: { slots: tempSlots }
-    // Note: Ensure don't overwrite "booked" status in the DB, only save the "available" times.
-    const handleSave = () => {
-        if (isApplyAllActive) {
-            setDefaultSchedule(tempSlots);
-            setAllSchedules({}); 
-        } else {
-            const key = getDateKey(date);
-            setAllSchedules(prev => ({ ...prev, [key]: tempSlots }));
+    // 1. If isApplyAllActive: Apply to multiple dates from calendar
+    // 2. Else: Write to "schedules" collection -> Document ID: {doctorId}_{dateKey} -> Field: { slots: tempSlots }
+    const handleSave = async () => {
+        if (!doctorId) {
+            console.error('Doctor ID not found');
+            return;
         }
-        setIsMainModalOpen(false);
+
+        try {
+            if (isApplyAllActive) {
+                // Generate dates for next 30 days and apply schedule to all
+                const dateKeys: string[] = [];
+                for (let i = 0; i < 30; i++) {
+                    const futureDate = new Date(date);
+                    futureDate.setDate(futureDate.getDate() + i);
+                    dateKeys.push(getDateKey(futureDate));
+                }
+                
+                const success = await applyScheduleToMultipleDates(doctorId, dateKeys, tempSlots);
+                if (success) {
+                    setDefaultSchedule(tempSlots);
+                    // Update all schedules in state
+                    const newSchedules: Record<string, ScheduleSlot[]> = {};
+                    dateKeys.forEach(key => {
+                        newSchedules[key] = tempSlots;
+                    });
+                    setAllSchedules(newSchedules);
+                }
+            } else {
+                // Save for specific date only
+                const key = getDateKey(date);
+                const success = await saveScheduleForDate(doctorId, key, tempSlots);
+                if (success) {
+                    setAllSchedules(prev => ({ ...prev, [key]: tempSlots }));
+                }
+            }
+            setIsMainModalOpen(false);
+            setTempSlots([]);
+            setIsApplyAllActive(false);
+        } catch (err) {
+            console.error('Error saving schedule:', err);
+        }
     };
 
     const handleAddTime = () => {
@@ -321,8 +438,11 @@ export default function AppointmentsPage() {
         setIsAddPopupOpen(false);
     };
 
-    const handleSlotClick = (slot: TimeSlot, index: number) => {
+    const handleSlotClick = (slot: ScheduleSlot, index: number) => {
         setSelectedSlotData({ slot, index });
+        // Also track the selected date and time for appointment booking
+        setSelectedDateKey(getDateKey(date));
+        setSelectedTimeSlot(slot.time);
     };
 
     const handleDeleteSlotConfirm = () => {
@@ -371,7 +491,10 @@ export default function AppointmentsPage() {
             <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6 items-stretch">
                 
                 {/* Calendar Section */}
-                <div className="flex-1 bg-white rounded-xl p-6 shadow-sm flex flex-col">
+                <div 
+                    className="flex-1 bg-white rounded-xl p-6 shadow-sm flex flex-col relative"
+                    onMouseLeave={handleDateLeaveHover}
+                >
                     <Calendar
                         onChange={(value) => {
                             if (value instanceof Date) {
@@ -394,16 +517,39 @@ export default function AppointmentsPage() {
                                 return isSameDay(appDate, date);
                             });
 
-                            if (hasAppointments) {
-                                return (
-                                    <div className="mt-auto w-full flex justify-start pl-1">
+                            return (
+                                <div 
+                                    className="mt-auto w-full flex justify-start pl-1"
+                                    onMouseEnter={() => handleDateHover(date)}
+                                >
+                                    {hasAppointments && (
                                         <span className="block w-3 h-3 bg-orange-400 rounded-full"></span>
-                                    </div>
-                                );
-                            }
-                            return null;
+                                    )}
+                                </div>
+                            );
                         }}
                     />
+                    
+                    {/* Hover Tooltip - Show Booked Times */}
+                    {hoveredDateSchedule && hoveredDateSchedule.length > 0 && (
+                        <div className="absolute top-2 right-2 bg-white border border-[#006a71] rounded-lg shadow-lg p-3 z-50 w-48">
+                            <p className="text-xs font-semibold text-[#006a71] mb-2">{hoveredDateKey}</p>
+                            <div className="text-xs text-gray-700 space-y-1 max-h-40 overflow-y-auto">
+                                {hoveredDateSchedule.map((slot, idx) => (
+                                    <div key={idx} className="flex items-center justify-between">
+                                        <span>{slot.time}</span>
+                                        <span className={`px-2 py-0.5 rounded text-xs ${
+                                            slot.status === 'booked' 
+                                                ? 'bg-red-100 text-red-700' 
+                                                : 'bg-green-100 text-green-700'
+                                        }`}>
+                                            {slot.status === 'booked' ? 'Booked' : 'Available'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
                 
                 {/* Right Side Column (Sidebar) */}
@@ -461,14 +607,14 @@ export default function AppointmentsPage() {
                                                 </div>
                                                 <div className="flex gap-3">
                                                     <button 
-                                                        onClick={() => handleAcceptClick(req.id, req.clientName)}
+                                                        onClick={() => handleAcceptClick(req.id, req.clientName, req.clientId, req.time, req.dateKey)}
                                                         disabled={loading}
                                                         className="flex-1 bg-[#48A6A7] text-white py-2 rounded-md text-sm font-medium hover:bg-[#3F9192] disabled:bg-gray-300 transition-colors"
                                                     >
                                                         {loading ? 'Processing...' : 'Accept'}
                                                     </button>
 
-                                                    <button onClick={() => handleRejectClick(req.id, req.clientName)} disabled={loading} className="flex-1 bg-gray-200 text-gray-600 py-2 rounded-md text-sm font-medium hover:bg-gray-300 disabled:bg-gray-200 transition-colors">Reject</button>
+                                                    <button onClick={() => handleRejectClick(req.id, req.clientName, req.clientId)} disabled={loading} className="flex-1 bg-gray-200 text-gray-600 py-2 rounded-md text-sm font-medium hover:bg-gray-300 disabled:bg-gray-200 transition-colors">Reject</button>
                                                 </div>
                                             </div>
                                         )}
@@ -494,30 +640,43 @@ export default function AppointmentsPage() {
 
                            <tr className="text-gray-500 text-sm border-b border-gray-300">
                                <th className="pb-2 pl-2 w-[15%]">Time</th>
-                               <th className="pb-2 w-[35%]">Patient</th>
-                               <th className="pb-2 w-[20%]">Status</th>
-                               <th className="pb-2 w-[30%]">Action</th>
+                               <th className="pb-2 w-[25%]">Patient</th>
+                               <th className="pb-2 w-[15%]">Status</th>
+                               <th className="pb-2 w-[20%]">Booked Date & Time</th>
+                               <th className="pb-2 w-[25%]">Action</th>
                            </tr>
                        </thead>
                        <tbody className="text-sm">
                            {currentDayAppointments && currentDayAppointments.length > 0 ? currentDayAppointments.map((appt) => {
-                               const appTime = appt.time || (appt.timestamp ? new Date(appt.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+                               const appTime = appt.timestamp ? new Date(appt.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+                               const bookedDateStr = appt.dateKey || 'Not specified';
+                               const bookedTimeStr = appt.time || 'Not specified';
                                return (
                                <tr key={appt.id} className="border-b border-gray-200 h-16 hover:bg-gray-50 transition-colors">
                                    <td className="pl-2 font-medium text-gray-700">{appTime}</td>
                                    <td className="flex items-center space-x-3 h-16"><span className="w-8 h-8 bg-gray-200 rounded-full flex-shrink-0"></span><div className="flex flex-col"><span className="font-medium text-gray-900">{appt.clientName || 'Unknown'}</span></div></td>
                                    <td><span className={`px-3 py-1 rounded-full text-xs font-medium ${!appt.approved || appt.approved === 'false' ? "bg-orange-100 text-orange-600" : appt.approved === 'true' ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>{!appt.approved || appt.approved === 'false' ? 'Pending' : appt.approved === 'true' ? 'Approved' : 'Rejected'}</span></td>
+                                   <td className="text-sm text-gray-700">
+                                       {appt.approved === 'true' ? (
+                                           <div className="flex flex-col">
+                                               <span className="font-medium">{bookedDateStr}</span>
+                                               <span className="text-xs text-gray-500">{bookedTimeStr}</span>
+                                           </div>
+                                       ) : (
+                                           <span className="text-gray-400">Pending approval</span>
+                                       )}
+                                   </td>
                                    <td className="space-x-2">
                                        {!appt.approved || appt.approved === 'false' ? (
                                             <>
                                                 <button 
-                                                    onClick={() => handleAcceptClick(appt.id, appt.clientName)}
+                                                    onClick={() => handleAcceptClick(appt.id, appt.clientName, appt.clientId, appt.time, appt.dateKey)}
                                                     disabled={loading}
                                                     className="px-4 py-1.5 bg-[#48A6A7] text-white rounded-lg text-xs hover:bg-[#3F9192] disabled:bg-gray-300 transition-colors"
                                                 >
                                                     {loading ? 'Processing...' : 'Accept'}
                                                 </button>
-                                                <button onClick={() => handleRejectClick(appt.id, appt.clientName)} disabled={loading} className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 disabled:bg-gray-100 transition-colors">Reject</button>
+                                                <button onClick={() => handleRejectClick(appt.id, appt.clientName, appt.clientId)} disabled={loading} className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 disabled:bg-gray-100 transition-colors">Reject</button>
                                             </>
                                        ) : (
                                             <div className="h-8"></div> 
@@ -547,10 +706,8 @@ export default function AppointmentsPage() {
                             <div className="flex-1 flex flex-wrap content-start gap-2 overflow-y-auto mb-6 border border-gray-200 rounded-xl p-2">
                                 {tempSlots.map((slot, i) => {
                                     let slotClass = "w-32 py-3 rounded flex items-center justify-center text-sm font-medium cursor-pointer hover:opacity-80 transition-opacity ";
-                                    if (slot.status === 'confirmed') {
+                                    if (slot.status === 'booked') {
                                         slotClass += "bg-[#FE9056] text-white border border-orange-400";
-                                    } else if (slot.status === 'pending') {
-                                        slotClass += "bg-[#E2F0F1] text-gray-700 border-2 border-[#FE9056]";
                                     } else {
                                         slotClass += "bg-[#E2F0F1] text-gray-700 border border-[#CCCCCC]";
                                     }
@@ -653,7 +810,7 @@ export default function AppointmentsPage() {
                 }
                 confirmText={confirmDialog.type === 'accept' ? 'Accept' : 'Decline'}
                 onConfirm={confirmDialog.type === 'accept' ? handleAcceptConfirm : handleRejectConfirm}
-                onCancel={() => setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null })}
+                onCancel={() => setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null, clientId: null })}
                 isLoading={loading}
             />
         </div>

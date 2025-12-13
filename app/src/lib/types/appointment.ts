@@ -21,6 +21,12 @@ export interface AppointmentRequest {
   painLocation: string;
   patientFeels: string;
 
+  // Appointment Details
+  dateKey?: string; // The date string (e.g., "Sat Dec 20 2025")
+  time?: string; // The time (e.g., "09:00 AM")
+  selectedDateKey?: string; // Alternative field name for dateKey
+  selectedTimeSlot?: string; // Alternative field name for time
+
   // Metadata
   timestamp: number; // Firebase server timestamp (milliseconds)
   approved?: string | boolean; // 'true', 'false', or boolean
