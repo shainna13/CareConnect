@@ -78,17 +78,41 @@ export const useSchedules = () => {
     []
   );
 
-  // Save schedule for a specific date
+  // Save schedule for a specific date (also updates doctor info in parent document)
   const saveScheduleForDate = useCallback(
-    async (doctorId: string, dateKey: string, slots: TimeSlot[]): Promise<boolean> => {
+    async (doctorId: string, dateKey: string, slots: TimeSlot[], doctorName?: string, doctorSpecialty?: string): Promise<boolean> => {
       setLoading(true);
       setError(null);
       try {
+        // Save to the subcollection (dates)
         const scheduleRef = doc(db, 'schedules', doctorId, 'dates', dateKey);
         await setDoc(scheduleRef, {
           slots,
           updatedAt: Timestamp.now(),
         });
+
+        // Update parent document with doctor info (only if doctorName is provided)
+        const parentDocRef = doc(db, 'schedules', doctorId);
+        const parentDocSnapshot = await getDoc(parentDocRef);
+        
+        if (!parentDocSnapshot.exists() && doctorName) {
+          // Create parent document with doctor info if it doesn't exist
+          await setDoc(parentDocRef, {
+            doctorId,
+            name: doctorName,
+            specialty: doctorSpecialty || '',
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+          });
+        } else if (parentDocSnapshot.exists() && doctorName) {
+          // Update existing parent document
+          await updateDoc(parentDocRef, {
+            name: doctorName,
+            specialty: doctorSpecialty || '',
+            updatedAt: Timestamp.now(),
+          });
+        }
+
         return true;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
@@ -170,12 +194,13 @@ export const useSchedules = () => {
 
   // Apply schedule to multiple dates (default schedule)
   const applyScheduleToMultipleDates = useCallback(
-    async (doctorId: string, dateKeys: string[], slots: TimeSlot[]): Promise<boolean> => {
+    async (doctorId: string, dateKeys: string[], slots: TimeSlot[], doctorName?: string, doctorSpecialty?: string): Promise<boolean> => {
       setLoading(true);
       setError(null);
       try {
-        const promises = dateKeys.map((dateKey) =>
-          saveScheduleForDate(doctorId, dateKey, slots)
+        // Save to first date with doctor info, then to remaining dates
+        const promises = dateKeys.map((dateKey, index) =>
+          saveScheduleForDate(doctorId, dateKey, slots, index === 0 ? doctorName : undefined, index === 0 ? doctorSpecialty : undefined)
         );
         await Promise.all(promises);
         return true;

@@ -6,6 +6,8 @@ import { useAppointments } from "@/app/src/lib/hooks/useAppointments";
 import { useSchedules } from "@/app/src/lib/hooks/useSchedules";
 import { useUser } from "@/app/src/lib/context/UserContext";
 import { ConfirmationDialog } from "@/app/src/components/ConfirmationDialog";
+import { db } from "@/app/src/lib/firebase/client";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // --- INTERFACES ---
 interface TimeSlot {
@@ -323,6 +325,23 @@ export default function AppointmentsPage() {
                     console.error('Error booking time slot:', err);
                 }
             }
+
+            // Create notification for patient
+            try {
+                const patientNotifRef = collection(db, 'accounts', confirmDialog.clientId, 'notifications');
+                await addDoc(patientNotifRef, {
+                    type: 'consultation_accepted',
+                    appointmentId: confirmDialog.appointmentId,
+                    message: `Doctor ${accountData?.name || 'accepted'} accepted your consultation request`,
+                    details: `Scheduled for ${selectedDateKey || confirmDialog.appointmentDate || 'your selected date'} at ${selectedTimeSlot || confirmDialog.appointmentTime || 'your selected time'}`,
+                    sender: doctorId,
+                    doctorId: doctorId,
+                    timestamp: serverTimestamp(),
+                    isNew: true,
+                });
+            } catch (notifError) {
+                console.warn('Could not create notification for patient, but appointment was accepted', notifError);
+            }
             
             // Update local state optimistically with the doctor's selected date and time
             setAppointments(prev => prev.map(appt => {
@@ -365,6 +384,23 @@ export default function AppointmentsPage() {
         );
         
         if (success) {
+            // Create notification for patient
+            try {
+                const patientNotifRef = collection(db, 'accounts', confirmDialog.clientId, 'notifications');
+                await addDoc(patientNotifRef, {
+                    type: 'consultation_rejected',
+                    appointmentId: confirmDialog.appointmentId,
+                    message: `Doctor ${accountData?.name || 'declined'} declined your consultation request`,
+                    details: 'Please try scheduling with another doctor or a different time.',
+                    sender: doctorId,
+                    doctorId: doctorId,
+                    timestamp: serverTimestamp(),
+                    isNew: true,
+                });
+            } catch (notifError) {
+                console.warn('Could not create notification for patient, but appointment was rejected', notifError);
+            }
+
             // Update local state optimistically
             setAppointments(prev => prev.map(appt => 
                 appt.id === confirmDialog.appointmentId ? { ...appt, approved: 'false' } : appt
@@ -430,9 +466,12 @@ export default function AppointmentsPage() {
                 dateKeys = [getDateKey(date)];
             }
             
+            const doctorName = accountData?.name || 'Doctor';
+            const doctorSpecialty = accountData?.specialty || '';
+            
             if (dateKeys.length > 1) {
-                // Save to multiple dates
-                const success = await applyScheduleToMultipleDates(doctorId, dateKeys, tempSlots);
+                // Save to multiple dates with doctor info and specialty
+                const success = await applyScheduleToMultipleDates(doctorId, dateKeys, tempSlots, doctorName, doctorSpecialty);
                 if (success) {
                     setDefaultSchedule(tempSlots);
                     // Update all schedules in state
@@ -443,9 +482,9 @@ export default function AppointmentsPage() {
                     setAllSchedules(newSchedules);
                 }
             } else {
-                // Save for specific date only
+                // Save for specific date only with doctor info and specialty
                 const key = dateKeys[0];
-                const success = await saveScheduleForDate(doctorId, key, tempSlots);
+                const success = await saveScheduleForDate(doctorId, key, tempSlots, doctorName, doctorSpecialty);
                 if (success) {
                     setAllSchedules(prev => ({ ...prev, [key]: tempSlots }));
                 }
