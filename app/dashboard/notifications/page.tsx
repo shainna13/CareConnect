@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { db } from "@/app/src/lib/firebase/client";
-import { collection, query, onSnapshot, orderBy, Timestamp } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, Timestamp, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { useUser } from "@/app/src/lib/context/UserContext";
 import { formatTime } from "@/app/src/lib/formatTime";
 
@@ -47,7 +47,7 @@ export default function NotificationsPage() {
             message: data.message || "You have a new notification",
             email: data.email || "",
             time: formattedTime,
-            isRead: data.isRead || false,
+            isRead: !data.isNew, // If isNew is false, then isRead should be true
             type: data.type || "notification",
             timestamp: data.timestamp,
           };
@@ -70,20 +70,55 @@ export default function NotificationsPage() {
 
   // [FIREBASE - BACKEND] BATCH UPDATE (MARK ALL READ)
   const markAllAsRead = async () => {
+    if (!currentUser || notifications.length === 0) return;
+
     // Optimistic update for UI
     setNotifications(notifications.map((n) => ({ ...n, isRead: true })));
     
-    // TODO: Add Firebase batch update logic here
+    try {
+      // Get all unread notifications
+      const unreadNotifications = notifications.filter((n) => !n.isRead);
+      
+      if (unreadNotifications.length === 0) return;
+
+      // Use batch to update multiple documents at once
+      const batch = writeBatch(db);
+      
+      unreadNotifications.forEach((notification) => {
+        const notificationRef = doc(db, "accounts", currentUser.uid, "notifications", notification.id);
+        batch.update(notificationRef, { isNew: false });
+      });
+
+      // Commit the batch
+      await batch.commit();
+      console.log(`Marked ${unreadNotifications.length} notifications as read`);
+    } catch (error) {
+      console.error("Error marking notifications as read:", error);
+      // Revert optimistic update on error
+      setNotifications(notifications.map((n) => ({ ...n, isRead: false })));
+    }
   };
 
   // [FIREBASE - BACKEND] SINGLE DOCUMENT UPDATE
   const markAsRead = async (id: string) => {
+    if (!currentUser) return;
+
     // Optimistic update for UI
     setNotifications(
       notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
 
-    // TODO: Add Firebase updateDoc logic here
+    try {
+      const notificationRef = doc(db, "accounts", currentUser.uid, "notifications", id);
+      await updateDoc(notificationRef, { isNew: false });
+      console.log(`Marked notification ${id} as read`);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      // Revert optimistic update on error
+      setNotifications(
+        notifications.map((n) => (n.id === id ? { ...n, isRead: false } : n))
+      );
+    }
   };
 
   return (

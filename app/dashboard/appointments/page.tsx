@@ -212,6 +212,7 @@ export default function AppointmentsPage() {
     const [selectedSlotData, setSelectedSlotData] = useState<{ slot: ScheduleSlot, index: number } | null>(null);
     const [tempSlots, setTempSlots] = useState<ScheduleSlot[]>([]);
     const [isApplyAllActive, setIsApplyAllActive] = useState(false);
+    const [scheduleApplyType, setScheduleApplyType] = useState<'single' | 'week' | 'month' | 'everyday'>('single');
     const [rejectingItem, setRejectingItem] = useState<{ id: string, clientName: string } | null>(null);
     
     // --- SELECTED SCHEDULE SLOT FOR APPOINTMENT ---
@@ -375,35 +376,62 @@ export default function AppointmentsPage() {
 
     const handleOpenMainModal = () => {
         const key = getDateKey(date);
-        const availableSlots = allSchedules[key] !== undefined ? allSchedules[key] : defaultSchedule;
+        // Only show schedules that were explicitly set for this date
+        // Don't fall back to defaultSchedule - user must set it explicitly for each date/period
+        const availableSlots = allSchedules[key] || [];
         
         // For schedule management, we only show schedule slots (not appointments)
         // Appointments are managed separately in the appointments page
-        setTempSlots(availableSlots.length > 0 ? availableSlots : defaultSchedule);
-        setIsApplyAllActive(false); 
+        setTempSlots(availableSlots);
+        setScheduleApplyType('single');
         setIsMainModalOpen(true);
     };
 
     // [FIREBASE - BACKEND] WRITE OPERATION (SAVE SCHEDULE)
-    // This saves the "Available" slots for a specific day (or all days).
-    // 1. If isApplyAllActive: Apply to multiple dates from calendar
-    // 2. Else: Write to "schedules" collection -> Document ID: {doctorId}_{dateKey} -> Field: { slots: tempSlots }
+    // This saves the "Available" slots for a specific day or multiple days.
+    // Supports: Today, Week (7 days), Month (30 days), or Everyday (30 days)
     const handleSave = async () => {
         if (!doctorId) {
             console.error('Doctor ID not found');
             return;
         }
 
+        if (tempSlots.length === 0) {
+            console.error('No time slots to save');
+            return;
+        }
+
         try {
-            if (isApplyAllActive) {
-                // Generate dates for next 30 days and apply schedule to all
-                const dateKeys: string[] = [];
+            let dateKeys: string[] = [];
+            
+            if (scheduleApplyType === 'everyday') {
+                // Apply to next 30 days (daily)
                 for (let i = 0; i < 30; i++) {
                     const futureDate = new Date(date);
                     futureDate.setDate(futureDate.getDate() + i);
                     dateKeys.push(getDateKey(futureDate));
                 }
-                
+            } else if (scheduleApplyType === 'week') {
+                // Apply to next 7 days (weekly)
+                for (let i = 0; i < 7; i++) {
+                    const futureDate = new Date(date);
+                    futureDate.setDate(futureDate.getDate() + i);
+                    dateKeys.push(getDateKey(futureDate));
+                }
+            } else if (scheduleApplyType === 'month') {
+                // Apply to next 30 days (monthly)
+                for (let i = 0; i < 30; i++) {
+                    const futureDate = new Date(date);
+                    futureDate.setDate(futureDate.getDate() + i);
+                    dateKeys.push(getDateKey(futureDate));
+                }
+            } else {
+                // Apply to single date only (today)
+                dateKeys = [getDateKey(date)];
+            }
+            
+            if (dateKeys.length > 1) {
+                // Save to multiple dates
                 const success = await applyScheduleToMultipleDates(doctorId, dateKeys, tempSlots);
                 if (success) {
                     setDefaultSchedule(tempSlots);
@@ -416,7 +444,7 @@ export default function AppointmentsPage() {
                 }
             } else {
                 // Save for specific date only
-                const key = getDateKey(date);
+                const key = dateKeys[0];
                 const success = await saveScheduleForDate(doctorId, key, tempSlots);
                 if (success) {
                     setAllSchedules(prev => ({ ...prev, [key]: tempSlots }));
@@ -424,7 +452,7 @@ export default function AppointmentsPage() {
             }
             setIsMainModalOpen(false);
             setTempSlots([]);
-            setIsApplyAllActive(false);
+            setScheduleApplyType('single');
         } catch (err) {
             console.error('Error saving schedule:', err);
         }
@@ -720,11 +748,50 @@ export default function AppointmentsPage() {
                                 <button onClick={() => setIsAddPopupOpen(true)} className="w-32 py-3 rounded border-2 border-dashed border-[#006a71] text-[#006a71] font-bold text-xl hover:bg-teal-50 transition-colors flex items-center justify-center">+</button>
                             </div>
                         </div>
-                        <div className="mt-auto flex justify-end items-center space-x-6 pt-4 border-t border-gray-100">
-                            <div className="flex items-center space-x-3 cursor-pointer select-none" onClick={() => setIsApplyAllActive(!isApplyAllActive)}>
-                                <span className={`font-medium ${isApplyAllActive ? "text-[#006a71]" : "text-gray-500"}`}>Apply every day</span>
-                                <div className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${isApplyAllActive ? "bg-[#006a71]" : "bg-gray-200"}`}>
-                                    <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform duration-300 ${isApplyAllActive ? "translate-x-6" : "translate-x-0"}`}></span>
+                        <div className="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
+                            <div className="flex gap-3 flex-wrap">
+                                <div className={`flex items-center space-x-2 cursor-pointer select-none px-3 py-2 rounded-lg transition-colors ${
+                                    scheduleApplyType === 'single' ? 'bg-[#E0F2F1] text-[#006a71]' : 'text-gray-500 hover:bg-gray-100'
+                                }`} onClick={() => setScheduleApplyType('single')}>
+                                    <div className={`relative w-5 h-5 rounded border-2 transition-colors ${
+                                        scheduleApplyType === 'single' ? 'border-[#006a71] bg-[#006a71]' : 'border-gray-300'
+                                    }`}>
+                                        {scheduleApplyType === 'single' && <span className="absolute inset-1 text-white flex items-center justify-center text-xs font-bold">✓</span>}
+                                    </div>
+                                    <span className="font-medium text-sm">Today</span>
+                                </div>
+                                
+                                <div className={`flex items-center space-x-2 cursor-pointer select-none px-3 py-2 rounded-lg transition-colors ${
+                                    scheduleApplyType === 'week' ? 'bg-[#E0F2F1] text-[#006a71]' : 'text-gray-500 hover:bg-gray-100'
+                                }`} onClick={() => setScheduleApplyType('week')}>
+                                    <div className={`relative w-5 h-5 rounded border-2 transition-colors ${
+                                        scheduleApplyType === 'week' ? 'border-[#006a71] bg-[#006a71]' : 'border-gray-300'
+                                    }`}>
+                                        {scheduleApplyType === 'week' && <span className="absolute inset-1 text-white flex items-center justify-center text-xs font-bold">✓</span>}
+                                    </div>
+                                    <span className="font-medium text-sm">Week</span>
+                                </div>
+                                
+                                <div className={`flex items-center space-x-2 cursor-pointer select-none px-3 py-2 rounded-lg transition-colors ${
+                                    scheduleApplyType === 'month' ? 'bg-[#E0F2F1] text-[#006a71]' : 'text-gray-500 hover:bg-gray-100'
+                                }`} onClick={() => setScheduleApplyType('month')}>
+                                    <div className={`relative w-5 h-5 rounded border-2 transition-colors ${
+                                        scheduleApplyType === 'month' ? 'border-[#006a71] bg-[#006a71]' : 'border-gray-300'
+                                    }`}>
+                                        {scheduleApplyType === 'month' && <span className="absolute inset-1 text-white flex items-center justify-center text-xs font-bold">✓</span>}
+                                    </div>
+                                    <span className="font-medium text-sm">Month</span>
+                                </div>
+                                
+                                <div className={`flex items-center space-x-2 cursor-pointer select-none px-3 py-2 rounded-lg transition-colors ${
+                                    scheduleApplyType === 'everyday' ? 'bg-[#E0F2F1] text-[#006a71]' : 'text-gray-500 hover:bg-gray-100'
+                                }`} onClick={() => setScheduleApplyType('everyday')}>
+                                    <div className={`relative w-5 h-5 rounded border-2 transition-colors ${
+                                        scheduleApplyType === 'everyday' ? 'border-[#006a71] bg-[#006a71]' : 'border-gray-300'
+                                    }`}>
+                                        {scheduleApplyType === 'everyday' && <span className="absolute inset-1 text-white flex items-center justify-center text-xs font-bold">✓</span>}
+                                    </div>
+                                    <span className="font-medium text-sm">Everyday</span>
                                 </div>
                             </div>
                             <button onClick={handleSave} className="px-10 py-3 bg-[#48A6A7] hover:bg-[#3F9192] text-white rounded-lg font-semibold shadow-sm transition-colors">Save</button>

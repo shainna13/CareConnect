@@ -38,7 +38,11 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
   // Loading and cache states
   const [loading, setLoading] = useState(true);
   const [photoCache, setPhotoCache] = useState<Record<string, string>>({});
-  const [isSending, setIsSending] = useState(false);
+
+  // Cache for processed messages to avoid reprocessing
+  const processedMessagesCache = useRef<Map<string, any>>(new Map());
+  const senderNameCacheRef = useRef<Record<string, string>>({});
+  const prescriptionCacheRef = useRef<Record<string, any>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -82,7 +86,13 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
       return;
     }
 
-    setLoading(true);
+    // Only set loading if no messages yet (initial load)
+    if (messages.length === 0) {
+      setLoading(true);
+    }
+    processedMessagesCache.current.clear();
+    senderNameCacheRef.current = {};
+    prescriptionCacheRef.current = {};
 
     // Reset unread count when opening chat
     const resetUnreadCount = async () => {
@@ -111,14 +121,14 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
+        // Get all optimistic messages from current state
+        const optimisticMessages = messages.filter(msg => msg.id.startsWith("temp_"));
+        
         const loadedMessages: any[] = [];
-        const senderNameCache: Record<string, string> = {};
-        const prescriptionCache: Record<string, any> = {};
+        const senderNameCache = senderNameCacheRef.current;
+        const prescriptionCache = prescriptionCacheRef.current;
 
-        // Don't pre-populate with fallback names - fetch actual names from accounts collection
-        // This ensures we always show the real names, not generic fallbacks
-
-        // Collect all unique sender IDs and prescription IDs that need fetching
+        // Collect new sender IDs and prescription IDs that need fetching
         const sendersToFetch = new Set<string>();
         const prescriptionsToFetch = new Set<string>();
 
@@ -128,11 +138,14 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
             sendersToFetch.add(data.sender);
           }
           if (data.type === "prescription_ref" && data.prescriptionId && data.patientId) {
-            prescriptionsToFetch.add(`${data.patientId}|${data.prescriptionId}`);
+            const cacheKey = `${data.patientId}|${data.prescriptionId}`;
+            if (!prescriptionCache[cacheKey]) {
+              prescriptionsToFetch.add(cacheKey);
+            }
           }
         });
 
-        // Fetch all sender names in parallel
+        // Fetch only new sender names
         if (sendersToFetch.size > 0) {
           const senderPromises = Array.from(sendersToFetch).map(async (senderId) => {
             try {
@@ -147,7 +160,7 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
           await Promise.all(senderPromises);
         }
 
-        // Fetch all prescriptions in parallel
+        // Fetch only new prescriptions
         if (prescriptionsToFetch.size > 0) {
           const prescriptionPromises = Array.from(prescriptionsToFetch).map(async (key) => {
             const [patientId, prescriptionId] = key.split("|");
@@ -165,45 +178,64 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
           await Promise.all(prescriptionPromises);
         }
 
-        // Now process messages using the cached data (no more async calls)
+        senderNameCacheRef.current = senderNameCache;
+        prescriptionCacheRef.current = prescriptionCache;
+
+        // Process messages - reuse cached version if available
         snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data();
-          const senderName = senderNameCache[data.sender] || "Unknown";
-
-          let messageData: any = {
-            id: docSnap.id,
-            sender: data.sender,
-            senderName: senderName,
-            senderPhoto: photoCache[data.sender],
-            type: data.type,
-            message: data.message,
-            timestamp: data.timestamp,
-            status: data.status,
-          };
-
-          // Use cached prescription data
-          if (data.type === "prescription_ref" && data.prescriptionId && data.patientId) {
-            const cacheKey = `${data.patientId}|${data.prescriptionId}`;
-            const presData = prescriptionCache[cacheKey];
-            if (presData) {
-              messageData.prescriptionData = presData;
-              messageData.prescriptionId = data.prescriptionId;
-              messageData.status = presData.status || data.status;
-            } else {
-              messageData.prescriptionData = null;
-            }
+          const cachedMsg = processedMessagesCache.current.get(docSnap.id);
+          
+          if (cachedMsg) {
+            // Reuse cached message
+            loadedMessages.push(cachedMsg);
           } else {
-            messageData.prescriptionData = data.prescriptionData;
-            messageData.prescriptionId = data.prescriptionId;
+            // Process new message
+            const data = docSnap.data();
+            const senderName = senderNameCache[data.sender] || "Unknown";
+
+            let messageData: any = {
+              id: docSnap.id,
+              sender: data.sender,
+              senderName: senderName,
+              senderPhoto: photoCache[data.sender],
+              type: data.type,
+              message: data.message,
+              timestamp: data.timestamp,
+              status: data.status,
+            };
+
+            // Use cached prescription data
+            if (data.type === "prescription_ref" && data.prescriptionId && data.patientId) {
+              const cacheKey = `${data.patientId}|${data.prescriptionId}`;
+              const presData = prescriptionCache[cacheKey];
+              if (presData) {
+                messageData.prescriptionData = presData;
+                messageData.prescriptionId = data.prescriptionId;
+                messageData.status = presData.status || data.status;
+              } else {
+                messageData.prescriptionData = null;
+              }
+            } else {
+              messageData.prescriptionData = data.prescriptionData;
+              messageData.prescriptionId = data.prescriptionId;
+            }
+
+            messageData.evaluationData = data.evaluationData;
+            messageData.medicineName = data.medicineName;
+
+            // Cache the processed message
+            processedMessagesCache.current.set(docSnap.id, messageData);
+            loadedMessages.push(messageData);
           }
-
-          messageData.evaluationData = data.evaluationData;
-          messageData.medicineName = data.medicineName;
-
-          loadedMessages.push(messageData);
         });
 
-        setMessages(loadedMessages);
+        // Merge: real messages + remaining optimistic messages (for offline scenarios)
+        const mergedMessages = [
+          ...loadedMessages,
+          ...optimisticMessages.filter(opt => !loadedMessages.some(msg => msg.id === opt.id))
+        ];
+
+        setMessages(mergedMessages);
         setLoading(false);
       },
       (error) => {
@@ -220,27 +252,40 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
     e.preventDefault();
     if (!inputValue.trim() || !chat || !currentUser) return;
 
-    setIsSending(true);
+    const messageText = inputValue;
+    const optimisticMessage = {
+      id: `temp_${Date.now()}`, // Temporary ID
+      sender: currentUser.uid,
+      senderName: accountData?.name || "Unknown",
+      senderPhoto: photoCache[currentUser.uid],
+      type: "text",
+      message: messageText,
+      timestamp: new Date(),
+      status: "sending",
+    };
+
+    // Immediately add message to UI (optimistic update)
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setInputValue("");
+
     try {
       const messagesRef = collection(db, "chats", chat.id, "convo");
       await addDoc(messagesRef, {
         sender: currentUser.uid,
         senderName: accountData?.name || "Unknown",
         type: "text",
-        message: inputValue,
+        message: messageText,
         timestamp: serverTimestamp(),
       });
 
       // Update parent chat with last message
       if (onMessageSent) {
-        onMessageSent(chat.id, inputValue);
+        onMessageSent(chat.id, messageText);
       }
-
-      setInputValue("");
     } catch (error) {
       console.error("Error sending message:", error);
-    } finally {
-      setIsSending(false);
+      // Remove the optimistic message on error
+      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticMessage.id));
     }
   };
 
@@ -248,15 +293,33 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
   const handleSendPrescription = async (data: any) => {
     if (!chat || !currentUser) return;
 
-    setIsSending(true);
+    const medicineName = 
+      data.medicines && data.medicines.length > 0 
+        ? data.medicines[0].medicineName || 'Prescription'
+        : 'Prescription';
+
+    // Create optimistic message
+    const optimisticMessage = {
+      id: `temp_${Date.now()}`,
+      sender: currentUser.uid,
+      senderName: accountData?.name || "Unknown",
+      senderPhoto: photoCache[currentUser.uid],
+      type: "prescription_ref",
+      message: `Sent a prescription: ${medicineName}`,
+      timestamp: new Date(),
+      status: "sending",
+      prescriptionData: {
+        medicines: data.medicines || [],
+      },
+      prescriptionId: "pending",
+    };
+
+    // Add optimistic message immediately
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setIsFormOpen(false);
+
     try {
       // Extract medicine name from the medicines array
-      const medicineName = 
-        data.medicines && data.medicines.length > 0 
-          ? data.medicines[0].medicineName || 'Prescription'
-          : 'Prescription';
-
-      // Get patient ID
       const patientId = chat.isDoctor ? chat.client : chat.doctor;
       const doctorId = currentUser.uid;
 
@@ -353,12 +416,10 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
       if (onMessageSent) {
         onMessageSent(chat.id, `Sent a prescription: ${medicineName}`);
       }
-
-      setIsFormOpen(false);
     } catch (error) {
       console.error("Error sending prescription:", error);
-    } finally {
-      setIsSending(false);
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticMessage.id));
     }
   };
 
@@ -366,7 +427,23 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
   const handleSendEvaluation = async (data: any) => {
     if (!chat || !currentUser) return;
 
-    setIsSending(true);
+    // Create optimistic message
+    const optimisticMessage = {
+      id: `temp_${Date.now()}`,
+      sender: currentUser.uid,
+      senderName: accountData?.name || "Unknown",
+      senderPhoto: photoCache[currentUser.uid],
+      type: "evaluation",
+      message: `Sent an evaluation: ${data.diagnosis || "Patient evaluation"}`,
+      timestamp: new Date(),
+      status: "sending",
+      evaluationData: data,
+    };
+
+    // Add optimistic message immediately
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setIsEvalOpen(false);
+
     try {
       const messagesRef = collection(db, "chats", chat.id, "convo");
       await addDoc(messagesRef, {
@@ -382,12 +459,10 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
       if (onMessageSent) {
         onMessageSent(chat.id, "Sent an evaluation");
       }
-
-      setIsEvalOpen(false);
     } catch (error) {
       console.error("Error sending evaluation:", error);
-    } finally {
-      setIsSending(false);
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticMessage.id));
     }
   };
 
@@ -597,11 +672,18 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
                         isCurrentUser
                           ? "bg-[#a7d3d3] text-gray-800"
                           : "bg-white text-gray-800"
-                      }`}
+                      } ${msg.status === "sending" ? "opacity-75" : ""}`}
                     >
                       <p className="break-words">{msg.message}</p>
                       <span className="text-xs text-gray-600 block text-right mt-1">
-                        {formatMessageTime(msg.timestamp)}
+                        {msg.status === "sending" ? (
+                          <span className="inline-flex items-center gap-1">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse"></span>
+                            Sending...
+                          </span>
+                        ) : (
+                          formatMessageTime(msg.timestamp)
+                        )}
                       </span>
                     </div>
                   )}
@@ -779,8 +861,7 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
           <button
             type="button"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-2 text-[#006A71] hover:bg-gray-100 rounded-full transition relative"
-            disabled={isSending}
+            className="p-2 text-[#006A71] hover:bg-gray-100 rounded-full transition"
           >
             <svg
               className="w-6 h-6"
@@ -832,13 +913,12 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Type a message..."
             className="flex-1 px-4 py-2 outline-none border border-gray-200 rounded-lg focus:border-[#006A71]"
-            disabled={isSending}
           />
 
           {/* Send Button */}
           <button
             type="submit"
-            disabled={isSending || !inputValue.trim()}
+            disabled={!inputValue.trim()}
             className="p-2 text-[#006A71] hover:opacity-80 transition disabled:opacity-50"
           >
             <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">

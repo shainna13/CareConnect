@@ -30,7 +30,7 @@ export const useSchedules = () => {
       setLoading(true);
       setError(null);
       try {
-        const scheduleRef = doc(db, 'schedules', `${doctorId}_${dateKey}`);
+        const scheduleRef = doc(db, 'schedules', doctorId, 'dates', dateKey);
         const scheduleDoc = await getDoc(scheduleRef);
 
         if (scheduleDoc.exists()) {
@@ -55,14 +55,13 @@ export const useSchedules = () => {
       setLoading(true);
       setError(null);
       try {
-        const schedulesRef = collection(db, 'schedules');
-        const q = query(schedulesRef, where('doctorId', '==', doctorId));
-        const snapshot = await getDocs(q);
+        const datesCollectionRef = collection(db, 'schedules', doctorId, 'dates');
+        const snapshot = await getDocs(datesCollectionRef);
 
         const schedules: Record<string, TimeSlot[]> = {};
         snapshot.docs.forEach((doc) => {
           const data = doc.data();
-          const dateKey = data.dateKey;
+          const dateKey = doc.id; // The document ID is the dateKey
           schedules[dateKey] = data.slots || [];
         });
 
@@ -85,10 +84,8 @@ export const useSchedules = () => {
       setLoading(true);
       setError(null);
       try {
-        const scheduleRef = doc(db, 'schedules', `${doctorId}_${dateKey}`);
+        const scheduleRef = doc(db, 'schedules', doctorId, 'dates', dateKey);
         await setDoc(scheduleRef, {
-          doctorId,
-          dateKey,
           slots,
           updatedAt: Timestamp.now(),
         });
@@ -111,7 +108,7 @@ export const useSchedules = () => {
       setLoading(true);
       setError(null);
       try {
-        const scheduleRef = doc(db, 'schedules', `${doctorId}_${dateKey}`);
+        const scheduleRef = doc(db, 'schedules', doctorId, 'dates', dateKey);
         const scheduleDoc = await getDoc(scheduleRef);
 
         if (!scheduleDoc.exists()) {
@@ -144,7 +141,7 @@ export const useSchedules = () => {
       setLoading(true);
       setError(null);
       try {
-        const scheduleRef = doc(db, 'schedules', `${doctorId}_${dateKey}`);
+        const scheduleRef = doc(db, 'schedules', doctorId, 'dates', dateKey);
         const scheduleDoc = await getDoc(scheduleRef);
 
         if (!scheduleDoc.exists()) {
