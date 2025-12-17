@@ -33,6 +33,7 @@ interface Appointment {
     dateKey?: string; // The date string (e.g., "Sat Dec 20 2025")
     time?: string;    // "08:30 AM"
     approved?: string | boolean; // 'true', 'false', or boolean
+    status?: string; // 'Confirmed', 'Rejected', or 'Pending'
     message?: string; 
     timestamp?: number; 
     bodyTemperature?: string;
@@ -71,7 +72,7 @@ const formatTimeAgo = (timestamp: number): string => {
 };
 
 export default function AppointmentsPage() {
-    const { fetchAppointments, respondToAppointment, loading, error: apiError } = useAppointments();
+    const { fetchAppointments, respondToAppointment, loading, error: apiError, subscribeToAppointments } = useAppointments();
     const { saveScheduleForDate, fetchScheduleForDate, bookTimeSlot, applyScheduleToMultipleDates } = useSchedules();
     const { accountData } = useUser(); // Get doctorId from UserContext
     const [date, setDate] = useState<Date>(new Date());
@@ -121,16 +122,20 @@ export default function AppointmentsPage() {
         }
     }, [accountData?.id]); // Re-run when accountData changes
 
-    // --- LOAD APPOINTMENTS ON MOUNT AND WHEN DOCTOR CHANGES ---
+    // --- LOAD APPOINTMENTS ON MOUNT WITH REAL-TIME LISTENER ---
     useEffect(() => {
-        const loadAppointments = async () => {
-            if (!doctorId) return;
-            
-            setLoadingAppointments(true);
-            const result = await fetchAppointments({ doctorId });
-            
-            if (result) {
-                // Direct transformation - API returns same structure now
+        if (!doctorId) {
+            setLoadingAppointments(false);
+            return;
+        }
+        
+        setLoadingAppointments(true);
+
+        // Subscribe to real-time appointment updates
+        const unsubscribe = subscribeToAppointments(
+            { doctorId },
+            (result) => {
+                // Transform the results
                 const transformedAppointments = result.map((appt) => {
                   const appointmentData = appt.data;
                   // Handle both Firestore Timestamp and number
@@ -150,6 +155,7 @@ export default function AppointmentsPage() {
                     dateKey: appointmentData.dateKey || appointmentData.selectedDateKey || getDateKey(new Date(timestamp)),
                     time: appointmentData.time || appointmentData.selectedTimeSlot,
                     approved: appointmentData.approved,
+                    status: appointmentData.status,
                     message: appointmentData.message,
                     timestamp: timestamp,
                     bodyTemperature: appointmentData.bodyTemperature,
@@ -163,12 +169,17 @@ export default function AppointmentsPage() {
                 });
                 
                 setAppointments(transformedAppointments);
+                setLoadingAppointments(false);
+            },
+            (error) => {
+                console.error('Error subscribing to appointments:', error);
+                setLoadingAppointments(false);
             }
-            setLoadingAppointments(false);
-        };
+        );
 
-        loadAppointments();
-    }, [doctorId, fetchAppointments]);
+        // Cleanup subscription on unmount or when doctorId changes
+        return () => unsubscribe();
+    }, [doctorId, subscribeToAppointments]);
 
 
     // --- SCHEDULE STATES ---
@@ -178,7 +189,8 @@ export default function AppointmentsPage() {
     const [allSchedules, setAllSchedules] = useState<Record<string, ScheduleSlot[]>>({});
     const [loadingSchedule, setLoadingSchedule] = useState(false);
 
-    // Load schedules when doctor ID changes
+    // Load schedules when doctor ID or date changes
+    // Auto-refreshes every 30 seconds for real-time updates
     useEffect(() => {
         const loadSchedules = async () => {
             if (!doctorId) return;
@@ -199,7 +211,14 @@ export default function AppointmentsPage() {
             }
         };
 
+        // Load immediately
         loadSchedules();
+        
+        // Auto-refresh every 30 seconds for real-time updates
+        const refreshInterval = setInterval(loadSchedules, 30000);
+        
+        // Cleanup interval on unmount or when dependencies change
+        return () => clearInterval(refreshInterval);
     }, [doctorId, date, fetchScheduleForDate]);
 
     // [FIREBASE - BACKEND] DEFAULT SETTINGS
@@ -349,6 +368,7 @@ export default function AppointmentsPage() {
                     return {
                         ...appt,
                         approved: 'true',
+                        status: 'Confirmed',
                         dateKey: selectedDateKey || appt.dateKey,
                         time: selectedTimeSlot || appt.time
                     };
@@ -403,8 +423,11 @@ export default function AppointmentsPage() {
 
             // Update local state optimistically
             setAppointments(prev => prev.map(appt => 
-                appt.id === confirmDialog.appointmentId ? { ...appt, approved: 'false' } : appt
+                appt.id === confirmDialog.appointmentId ? { ...appt, approved: 'false', status: 'Rejected' } : appt
             ));
+            
+            // Clear expanded request if it's the one being rejected
+            if(expandedRequestId === confirmDialog.appointmentId) setExpandedRequestId(null);
         }
         
         setConfirmDialog({ isOpen: false, type: null, appointmentId: null, clientName: null, clientId: null });
@@ -721,33 +744,35 @@ export default function AppointmentsPage() {
                                return (
                                <tr key={appt.id} className="border-b border-gray-200 h-16 hover:bg-gray-50 transition-colors">
                                    <td className="pl-2 font-medium text-gray-700">{appTime}</td>
-                                   <td className="flex items-center space-x-3 h-16"><span className="w-8 h-8 bg-gray-200 rounded-full flex-shrink-0"></span><div className="flex flex-col"><span className="font-medium text-gray-900">{appt.clientName || 'Unknown'}</span></div></td>
-                                   <td><span className={`px-3 py-1 rounded-full text-xs font-medium ${!appt.approved || appt.approved === 'false' ? "bg-orange-100 text-orange-600" : appt.approved === 'true' ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>{!appt.approved || appt.approved === 'false' ? 'Pending' : appt.approved === 'true' ? 'Approved' : 'Rejected'}</span></td>
+                                   <td className="flex items-center space-x-3 h-16"><div className="flex flex-col"><span className="font-medium text-gray-900">{appt.clientName || 'Unknown'}</span></div></td>
+                                   <td><span className={`px-3 py-1 rounded-full text-xs font-medium ${appt.status === 'Rejected' ? "bg-red-100 text-red-600" : appt.status === 'Confirmed' || appt.approved === 'true' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"}`}>{appt.status === 'Rejected' ? 'Rejected' : appt.status === 'Confirmed' || appt.approved === 'true' ? 'Approved' : 'Pending'}</span></td>
                                    <td className="text-sm text-gray-700">
-                                       {appt.approved === 'true' ? (
-                                           <div className="flex flex-col">
-                                               <span className="font-medium">{bookedDateStr}</span>
-                                               <span className="text-xs text-gray-500">{bookedTimeStr}</span>
-                                           </div>
-                                       ) : (
-                                           <span className="text-gray-400">Pending approval</span>
-                                       )}
+                                     {appt.approved === 'true' ? (
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">{bookedDateStr}</span>
+                                            <span className="text-xs text-gray-500">{bookedTimeStr}</span>
+                                        </div>
+                                    ) : appt.status === 'Rejected' ? (
+                                        <span className="text-red-500 font-medium">Rejected</span>
+                                    ) : (
+                                        <span className="text-gray-400">Pending approval</span>
+                                    )}
                                    </td>
                                    <td className="space-x-2">
-                                       {!appt.approved || appt.approved === 'false' ? (
-                                            <>
-                                                <button 
-                                                    onClick={() => handleAcceptClick(appt.id, appt.clientName, appt.clientId, appt.time, appt.dateKey)}
-                                                    disabled={loading}
-                                                    className="px-4 py-1.5 bg-[#48A6A7] text-white rounded-lg text-xs hover:bg-[#3F9192] disabled:bg-gray-300 transition-colors"
-                                                >
-                                                    {loading ? 'Processing...' : 'Accept'}
-                                                </button>
-                                                <button onClick={() => handleRejectClick(appt.id, appt.clientName, appt.clientId)} disabled={loading} className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 disabled:bg-gray-100 transition-colors">Reject</button>
-                                            </>
-                                       ) : (
-                                            <div className="h-8"></div> 
-                                       )}
+                                       {appt.status !== 'Rejected' && appt.status !== 'Confirmed' && (!appt.approved || appt.approved === 'false') ? (
+                                        <>
+                                            <button 
+                                                onClick={() => handleAcceptClick(appt.id, appt.clientName, appt.clientId, appt.time, appt.dateKey)}
+                                                disabled={loading}
+                                                className="px-4 py-1.5 bg-[#48A6A7] text-white rounded-lg text-xs hover:bg-[#3F9192] disabled:bg-gray-300 transition-colors"
+                                            >
+                                                {loading ? 'Processing...' : 'Accept'}
+                                            </button>
+                                            <button onClick={() => handleRejectClick(appt.id, appt.clientName, appt.clientId)} disabled={loading} className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 disabled:bg-gray-100 transition-colors">Reject</button>
+                                        </>
+                                    ) : (
+                                        <div className="h-8"></div> 
+                                    )}
                                    </td>
                                </tr>
                                );

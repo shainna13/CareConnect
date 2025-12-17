@@ -30,6 +30,7 @@ export interface AppointmentRequest {
   // Metadata
   timestamp: number; // Firebase server timestamp (milliseconds)
   approved?: string | boolean; // 'true', 'false', or boolean
+  status?: string; // 'Confirmed', 'Rejected', or 'Pending'
   message?: string;
   rejectionReason?: string;
   acceptedAt?: number; // When doctor accepted it

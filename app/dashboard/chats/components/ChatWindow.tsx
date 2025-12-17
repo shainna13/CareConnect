@@ -337,7 +337,7 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
             type: med.type || "Tablet",
             dosage: med.dosage || "",
             frequency: med.frequency || "Once daily",
-            time: med.time || "",
+            time: med.time ? formatTime(med.time) : "", // Format time to include AM/PM
             duration: parseInt(med.duration) || 3,
             remarks: med.remarks || "",
           };
@@ -471,6 +471,13 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
     if (!chat || !currentUser || chat.isDoctor) return;
 
     try {
+      // 0. Update local state immediately (optimistic update)
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, status: "accepted" } : msg
+        )
+      );
+
       const patientId = currentUser.uid;
       const doctorId = chat.doctor;
 
@@ -545,6 +552,13 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
     if (!chat || !currentUser || chat.isDoctor) return;
 
     try {
+      // 0. Update local state immediately (optimistic update)
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, status: "declined" } : msg
+        )
+      );
+
       const patientId = currentUser.uid;
       const doctorId = chat.doctor;
 
@@ -713,9 +727,14 @@ export default function ChatWindow({ chat, onMessageSent }: any) {
                           <h3 className="font-bold text-gray-800">Prescription</h3>
                           <p className="text-sm text-gray-700">
                             {msg.prescriptionData.medicines && msg.prescriptionData.medicines.length > 0
-                              ? msg.prescriptionData.medicines[0].name
+                              ? msg.prescriptionData.medicines[0].medicineName || msg.prescriptionData.medicines[0].name
                               : "Medicine"}
                           </p>
+                          {msg.prescriptionData.medicines && msg.prescriptionData.medicines.length > 0 && msg.prescriptionData.medicines[0].time && (
+                            <p className="text-xs text-gray-600 mt-1">
+                              Time: {formatTime(msg.prescriptionData.medicines[0].time)}
+                            </p>
+                          )}
                         </div>
                       </div>
 

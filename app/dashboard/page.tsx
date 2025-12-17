@@ -12,6 +12,7 @@ interface AppointmentData {
   doctorId: string;
   message?: string;
   approved?: string | boolean;
+  status?: string;
   timestamp: number;
 }
 
@@ -69,6 +70,7 @@ export default function DashboardHome() {
               doctorId: appointmentData.doctorId,
               message: appointmentData.message,
               approved: appointmentData.approved,
+              status: appointmentData.status,
               timestamp: timestamp,
               clientId: appointmentData.clientId,
             };
@@ -198,17 +200,23 @@ export default function DashboardHome() {
                 </tr>
               </thead>
               <tbody className="text-sm">
-                {todayAppointments.map((appt) => (
-                  <tr key={appt.id} className="border-b border-gray-50 h-16 hover:bg-gray-50 transition-colors">
-                    <td className="pl-2 font-bold text-[#006a71]">{formatTime(appt.timestamp)}</td>
-                    <td className="font-semibold text-gray-800">{appt.clientName}</td>
-                    <td>
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
-                        {!appt.approved || appt.approved === 'false' ? 'Pending' : appt.approved === 'true' ? 'Approved' : 'Rejected'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+    {todayAppointments.map((appt) => (
+      <tr key={appt.id} className="border-b border-gray-50 h-16 hover:bg-gray-50 transition-colors">
+        <td className="pl-2 font-bold text-[#006a71]">{formatTime(appt.timestamp)}</td>
+        <td className="font-semibold text-gray-800">{appt.clientName}</td>
+        <td>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+            appt.status === 'Rejected' 
+              ? 'bg-red-100 text-red-600' 
+              : appt.status === 'Confirmed' || appt.approved === 'true'
+              ? 'bg-green-100 text-green-600'
+              : 'bg-orange-100 text-orange-600'
+          }`}>
+            {appt.status === 'Rejected' ? 'Rejected' : appt.status === 'Confirmed' || appt.approved === 'true' ? 'Approved' : 'Pending'}
+          </span>
+        </td>
+      </tr>
+    ))}
               </tbody>
             </table>
           </div>

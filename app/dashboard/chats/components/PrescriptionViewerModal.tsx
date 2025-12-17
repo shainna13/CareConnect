@@ -190,9 +190,9 @@ export default function PrescriptionViewerModal({ isOpen, onClose, data }: any) 
                             {/* Time */}
                             {med.time && (
                               <div className="flex items-start gap-2">
-                                  <svg className="w-5 h-5 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                  <svg className="w-5 h-5 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                   <div>
-                                      <p className="text-xs text-gray-400 font-medium">Time</p>
+                                      <p className="text-xs text-gray-400 font-medium">Time (Medicine: {med.name})</p>
                                       <p className="text-sm font-semibold text-gray-700">{formatTime(med.time)}</p>
                                   </div>
                               </div>

@@ -9,13 +9,13 @@ export const formatTime = (timeInput: any) => {
     // Firestore Timestamp
     date = timeInput.toDate();
   } else if (typeof timeInput === 'string' && timeInput.includes(':')) {
-    // Handle "HH:MM" format
+    // Handle "HH:MM" format (e.g., "04:10" from HTML time input or Firebase)
     const [hours, minutes] = timeInput.split(':');
     const h = parseInt(hours, 10);
     const m = parseInt(minutes, 10);
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h % 12 || 12;
-    const m_padded = m < 10 ? '0' + m : m;
+    const m_padded = String(m).padStart(2, '0');
     return `${h12}:${m_padded} ${ampm}`;
   } else {
     return 'N/A';
@@ -26,6 +26,6 @@ export const formatTime = (timeInput: any) => {
   const minutes = date.getMinutes();
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const h12 = hours % 12 || 12;
-  const m_padded = minutes < 10 ? '0' + minutes : minutes;
+  const m_padded = String(minutes).padStart(2, '0');
   return `${h12}:${m_padded} ${ampm}`;
 };
